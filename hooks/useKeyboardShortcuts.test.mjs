@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleGlobalEscape, isNewSessionShortcut, registerAbortHandler } from "./useKeyboardShortcuts.ts";
+import { createJiti } from "jiti";
+
+const jiti = createJiti(import.meta.url, {
+  alias: { "@": process.cwd() },
+  interopDefault: true,
+});
+const { handleGlobalEscape, isNewSessionShortcut, registerAbortHandler } = await jiti.import("./useKeyboardShortcuts.ts");
 
 function keydown(key, { tagName = "BUTTON", defaultPrevented = false } = {}) {
   return {
