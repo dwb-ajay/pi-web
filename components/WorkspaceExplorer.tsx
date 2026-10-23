@@ -7,10 +7,8 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { storedProjectName, type SessionUiState } from "@/lib/session-ui-state-shared";
 import type { SessionInfo } from "@/lib/types";
-import { workspacePickerSessions } from "@/lib/workspaces";
+import { workspacePickerMenuRows } from "@/lib/workspaces";
 import { SidebarMenu, type SidebarMenuAnchor, type SidebarMenuItem } from "./SidebarMenu";
-
-const PICKER_LIMIT = 200;
 
 interface Props {
   sessions: SessionInfo[];
@@ -24,6 +22,27 @@ interface Props {
   onAddSession: (projectKey: string, cwd: string, id: string) => void;
   onRemoveSession: (projectKey: string, id: string) => void;
   onRemoveWorkspace: (projectKey: string) => void;
+}
+
+export function workspacePickerMenuItems(
+  sessions: SessionInfo[],
+  projectKey: string,
+  memberIds: readonly string[],
+  note: (session: SessionInfo) => string,
+  alreadyAdded: string,
+): SidebarMenuItem[] {
+  return workspacePickerMenuRows(sessions, projectKey, new Set(memberIds)).map((session) => ({
+    type: "item",
+    id: session.id,
+    label: session.label,
+    title: session.searchTitle,
+    path: true,
+    checked: false,
+    disabled: session.added,
+    disabledReason: session.added ? alreadyAdded : undefined,
+    note: note(session),
+    onSelect: () => {},
+  }));
 }
 
 /**
@@ -64,33 +83,19 @@ export function WorkspaceExplorer({
     });
   });
 
-  const pickerItems: SidebarMenuItem[] = !picker ? [] : (() => {
-    const members = new Set(workspaces[picker.projectKey]?.sessionIds ?? []);
-    const matches = workspacePickerSessions(sessions, picker.projectKey, "");
-    const shown = matches.slice(0, PICKER_LIMIT);
-    const items: SidebarMenuItem[] = shown.map((session) => {
-      const added = members.has(session.id);
-      const title = session.name || session.firstMessage || session.id;
-      return {
-        type: "item" as const,
-        id: session.id,
-        label: title,
-        title: session.cwd,
-        path: true,
-        disabled: added,
-        disabledReason: added ? t("workspace.alreadyAdded") : undefined,
-        note: t("workspace.messagesAndEdited", {
-          count: session.messageCount,
-          edited: formatRelativeTime(session.modified, locale),
-        }),
-        onSelect: () => onAddSession(picker.projectKey, picker.cwd, session.id),
-      };
-    });
-    if (matches.length > shown.length) {
-      items.push({ type: "header", id: "more", label: t("workspace.pickerMore", { count: matches.length - shown.length }) });
-    }
-    return items;
-  })();
+  const pickerItems: SidebarMenuItem[] = !picker ? [] : workspacePickerMenuItems(
+    sessions,
+    picker.projectKey,
+    workspaces[picker.projectKey]?.sessionIds ?? [],
+    (session) => t("workspace.messagesAndEdited", {
+      count: session.messageCount,
+      edited: formatRelativeTime(session.modified, locale),
+    }),
+    t("workspace.alreadyAdded"),
+  ).map((item) => ({
+    ...item,
+    onSelect: () => onAddSession(picker.projectKey, picker.cwd, item.id),
+  }));
 
   return (
     <div className="workspace-explorer">

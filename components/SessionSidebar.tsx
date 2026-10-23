@@ -674,6 +674,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     snapshot: snapshotUiState,
     noteRevision: noteUiRevision,
   } = useSessionUiState();
+  const applyUiState = useCallback(async (request: SessionUiStateRequest) => {
+    const ok = await applyUiStateRequest(request);
+    if (!ok) setUiWriteFailures((count) => count + 1);
+    return ok;
+  }, [applyUiStateRequest]);
 
   useEffect(() => {
     if (!onWorkspaceActions) return;
@@ -681,7 +686,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       addExplicitSession(session) {
         const projectKey = workspaceKeyOf(session);
         if (!session.id || !session.cwd || !projectKey) return;
-        void applyUiStateRequest({
+        void applyUiState({
           action: "add-workspace-sessions",
           projectKey,
           cwd: session.cwd,
@@ -690,7 +695,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       },
     });
     return () => onWorkspaceActions(null);
-  }, [applyUiStateRequest, onWorkspaceActions]);
+  }, [applyUiState, onWorkspaceActions]);
 
   // The explorer's scroll container is always mounted (empty without a cwd),
   // so the scrollbar hook stays bound to the element that is on the page.
@@ -1218,7 +1223,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       }
       setCustomPathOpen(false);
       if (purpose === "workspace") {
-        void applyUiStateRequest({ action: "ensure-workspace", projectKey: data.projectKey, cwd: data.cwd });
+        void applyUiState({ action: "ensure-workspace", projectKey: data.projectKey, cwd: data.cwd });
         setSidebarTab("workspaces");
         saveSidebarTab("workspaces");
         return;
@@ -1246,7 +1251,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     } finally {
       setCustomPathValidating(false);
     }
-  }, [applyUiStateRequest, customPathOpen, customPathValue, customPathValidating, focusAfterCommit]);
+  }, [applyUiState, customPathOpen, customPathValue, customPathValidating, focusAfterCommit]);
 
   const handleCustomPathClick = useCallback(() => {
     setCustomPathOpen("files");
@@ -1597,11 +1602,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Pin and archive changes apply at once and are saved in the background; a
   // refused save rolls back (useSessionUiState) and says why in a toast.
-  const applyUiState = useCallback(async (request: SessionUiStateRequest) => {
-    const ok = await applyUiStateRequest(request);
-    if (!ok) setUiWriteFailures((count) => count + 1);
-    return ok;
-  }, [applyUiStateRequest]);
   useEffect(() => {
     if (uiWriteFailures === shownUiWriteFailuresRef.current) return;
     shownUiWriteFailuresRef.current = uiWriteFailures;
