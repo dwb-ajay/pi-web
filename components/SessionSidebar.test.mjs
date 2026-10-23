@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import ts from "typescript";
 import vm from "node:vm";
 
-const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
+// This file covers the left-sidebar explorer. The product default is right;
+// alias the placement hook so these renders stay on the left layout.
+const explorerPlacementHook = fileURLToPath(new URL("../hooks/useFileExplorerPlacement", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+const jiti = createJiti(import.meta.url, {
+  jsx: { runtime: "automatic" },
+  tsconfigPaths: true,
+  alias: {
+    [explorerPlacementHook]: fileURLToPath(new URL("./__fixtures__/file-explorer-placement-left.mjs", import.meta.url)),
+  },
+});
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");

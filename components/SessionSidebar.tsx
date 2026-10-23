@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type RefObject, type UIEvent as ReactUIEvent } from "react";
+import { createPortal } from "react-dom";
 import type { SessionInfo } from "@/lib/types";
 import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
@@ -76,6 +77,7 @@ import {
 } from "@/lib/session-ui-state-shared";
 import { focusIfLost, type FocusDocument } from "@/lib/stacked-dialog";
 import { useFilesPlacement } from "@/hooks/useFilesPlacement";
+import { useFileExplorerPlacement } from "@/hooks/useFileExplorerPlacement";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
@@ -226,6 +228,8 @@ interface Props {
     projectKey?: string | null,
   ) => void;
   onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
+  /** When the explorer is on the right, the files panel is portaled here. Null until that host mounts. */
+  fileExplorerHost?: HTMLElement | null;
   onOpenTerminal?: (cwd: string) => void;
   explorerRefreshKey?: number;
   onExplorerRefresh?: () => void;
@@ -506,7 +510,7 @@ function buttonAnchor(element: HTMLElement, align: "start" | "end"): SidebarMenu
   return { kind: "rect", rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }, align };
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, onWorkspaceActions, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, onWorkspaceActions, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, fileExplorerHost = null, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
@@ -573,7 +577,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // browser storage after hydration; the layout's choice is read the same
   // way (useFilesPlacement's server snapshot).
   const filesPlacement = useFilesPlacement();
-  const stacked = !isMobile && filesPlacement === "below";
+  const explorerOnRight = useFileExplorerPlacement() === "right";
+  // Right moves the one explorer into the file panel. The below/tab choice stays stored and applies only on the left.
+  const stacked = !isMobile && filesPlacement === "below" && !explorerOnRight;
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("workspaces");
   const [filesCollapsed, setFilesCollapsed] = useState(false);
   const workspacesTabRef = useRef<HTMLButtonElement>(null);
@@ -2697,10 +2703,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // The toolbar row's search button searches the files on the files tab:
   // the head has no search of its own. Below the sessions it is the
   // sessions' search alone; the files section's header has the files'.
-  const topTab: SidebarTab = stacked && sidebarTab === "files" ? "sessions" : sidebarTab;
+  const topTab: SidebarTab = (stacked || explorerOnRight) && sidebarTab === "files" ? "sessions" : sidebarTab;
   const workspacesShown = topTab === "workspaces";
   const sessionsShown = topTab === "sessions";
-  const searchesFiles = !stacked && sidebarTab === "files" && explorerCwd !== null;
+  const searchesFiles = !explorerOnRight && !stacked && sidebarTab === "files" && explorerCwd !== null;
   // What the toolbar row's widths depend on: New's label, and the tabs (the
   // chosen tab's label is bolder, the files tab carries the count). The
   // brand's text reports its own changes (fitHeader).
@@ -2880,7 +2886,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               <MessageIcon size={13} className="sidebar-tab-icon" />
               <span className="sidebar-tab-label">{t("sidebar.tabSessions")}</span>
             </button>
-            {!stacked && (
+            {!explorerOnRight && !stacked && (
             <button
               ref={filesTabRef}
               type="button"
@@ -3107,16 +3113,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         />
       )}
 
-      {/* Files: the project and worktree in use, and its files. A tab's
-          panel, or the section below the sessions, under a header row of its
-          own that folds it (only that row then shows, at the bottom). */}
+      {/* Files: one explorer. On the right it is portaled into the file panel's pinned tab. */}
+      {(() => {
+      const filesPanel = (
       <div
         ref={filesPanelRef}
         id="session-sidebar-panel-files"
-        role={stacked ? "region" : "tabpanel"}
-        aria-label={stacked ? t("sidebar.tabFiles") : undefined}
-        aria-labelledby={stacked ? undefined : "session-sidebar-tab-files"}
-        hidden={!stacked && sidebarTab !== "files"}
+        role={stacked || explorerOnRight ? "region" : "tabpanel"}
+        aria-label={stacked || explorerOnRight ? t("sidebar.tabFiles") : undefined}
+        aria-labelledby={stacked || explorerOnRight ? undefined : "session-sidebar-tab-files"}
+        hidden={!explorerOnRight && !stacked && sidebarTab !== "files"}
         className="sidebar-panel sidebar-files-panel"
         onScrollCapture={rememberScroll}
         onTransitionEnd={(event) => { if (event.target === event.currentTarget && event.propertyName === "height") endFilesFold(); }}
@@ -3218,6 +3224,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 {refreshButton}
                 {ignoredFilesButton("sidebar-files-views-start")}
                 {changesButton}
+                {explorerOnRight && (
+                  <ToolbarIconButton
+                    onClick={() => setFileSearchOpen((open) => !open)}
+                    disabled={!explorerCwd}
+                    title={t("sidebar.searchFiles")}
+                    expanded={fileSearchOpen}
+                    controls="file-search-input"
+                  >
+                    <SearchIcon size={14} />
+                  </ToolbarIconButton>
+                )}
               </div>
             )}
           </div>
@@ -3251,6 +3268,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         </div>
       </div>
+      );
+      if (explorerOnRight) return fileExplorerHost ? createPortal(filesPanel, fileExplorerHost) : null;
+      return filesPanel;
+      })()}
 
       <SidebarMenu
         open={menu !== null}
