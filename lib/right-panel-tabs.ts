@@ -39,7 +39,8 @@ export function parkedFilePanel(
 
 /**
  * Panel state after a workspace switch. Null means the current view keeps the
- * panel (open pinned explorer, or a terminal tab). File tabs still swap.
+ * panel: a terminal tab, or an open pinned explorer whose destination has no
+ * open file panel. A destination that had a file open is applied.
  */
 export function filePanelAfterWorkspaceSwitch(
   activeTabId: string | null,
@@ -54,6 +55,7 @@ export function filePanelAfterWorkspaceSwitch(
     && !activeFileId
     && !activeTabId.startsWith("agent:"),
   );
-  if (showingPinnedExplorer(activeTabId, panelOpen, explorerPinned) || terminalOwnsPanel) return null;
+  if (terminalOwnsPanel) return null;
+  if (showingPinnedExplorer(activeTabId, panelOpen, explorerPinned) && !restored.open) return null;
   return { activeTabId: restored.activeTabId, panelOpen: restored.open };
 }

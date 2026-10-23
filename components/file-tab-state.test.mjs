@@ -178,6 +178,16 @@ test("an open pinned explorer stays open across an empty workspace and is parked
   }
 });
 
+test("an open explorer still restores a destination file panel", () => {
+  const restored = { activeTabId: tabA.id, open: true };
+  for (const activeTabId of [null, "explorer"]) {
+    assert.deepEqual(filePanelAfterWorkspaceSwitch(activeTabId, true, true, restored), {
+      activeTabId: tabA.id,
+      panelOpen: true,
+    });
+  }
+});
+
 test("returning to a parked open explorer reopens the panel on the explorer", () => {
   const states = new Map();
   const parked = parkedFilePanel(null, true, true);
