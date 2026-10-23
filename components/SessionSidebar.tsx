@@ -564,8 +564,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // The files below the sessions (desktop, by default: both in view, a
   // separator between them, the files section foldable to its header row),
-  // or Sessions | Files tabs (the setting, and always on phones), each panel
-  // shown alone. Both layouts render the same elements in the same order,
+  // or Workspaces | Sessions | Files tabs (the setting, and always on phones),
+  // each panel shown alone. Below the sessions the Files tab is hidden. Both layouts render the same elements in the same order,
   // only attributes and a few rows of their own differ, so a switch (the
   // setting, the phone breakpoint) never remounts the explorer, the tree or
   // the picker. The tab, the folded section, the group choices and the
@@ -703,7 +703,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const explorerScrollRef = useRef<HTMLDivElement>(null);
   useScrollbarVisibility(explorerScrollRef);
   // The toolbar row's search button: always there and enabled, so focus has
-  // somewhere to go when there are no tabs (selectedTabButton).
+  // somewhere to go when the selected tab button is gone (selectedTabButton).
   const searchButtonRef = useRef<HTMLButtonElement>(null);
 
   // The files section's height below the sessions, on the sidebar's root
@@ -1570,8 +1570,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   /**
    * The selected tab: focus has somewhere to go when the control it was on is
-   * gone. With the files below the sessions there are no tabs (their refs are
-   * null): the toolbar row's search button, always there and enabled.
+   * gone. Below the sessions the Files tab is not mounted: the Workspaces or
+   * Sessions tab, else the toolbar row's search button.
    */
   const selectedTabButton = useCallback(
     () => {
@@ -1626,9 +1626,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setTreeReveal({ id: treeRevealIdRef.current, at: Date.now(), rowKey: `group:${projectKey}` });
   }, [applyUiState, model.unorderedKeysByBand, projectByKey]);
 
-  // With the files below the sessions there are no tabs: whatever would pick
-  // one (the archive view, the search's fallback) leaves the saved tab as it
-  // is, for the tabs layout and phones.
+  // Saves the choice in both layouts. Below the sessions a saved Files tab
+  // still displays as Sessions until the tabs layout shows Files again.
   const switchTab = useCallback((tab: SidebarTab) => {
     setSidebarTab(tab);
     saveSidebarTab(tab);
@@ -2843,11 +2842,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         />
       )}
       {/* One toolbar row, in the cells of the chat's top bar beside it (its
-          line continues that bar's): Sessions | Files, then New and the
-          search of the tab in view. Only the two tabs are the tablist. With
-          the files below the sessions there is nothing to choose: the brand
-          stands there (the panel's anchor, the versions on a click), and
-          the search is the sessions'. */}
+          line continues that bar's): Workspaces | Sessions, plus Files in the
+          tabs layout, then New and the search of the tab in view. Only those
+          tabs are the tablist. With the files below the sessions the brand
+          stands first (the panel's anchor, the versions on a click) and the
+          Files tab is hidden. */}
       <div ref={headerRef} className="sidebar-header">
         {stacked && <PiWebTitle onWidthChange={fitHeader} />}
         <div className="sidebar-tabs-list" role="tablist" aria-label={t("sidebar.tabsLabel")}>
