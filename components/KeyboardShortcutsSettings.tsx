@@ -11,6 +11,7 @@ import {
   currentShortcutPlatform,
   defaultShortcutBindings,
   formatShortcutChord,
+  incomingShortcutDraft,
   interpretRecordingKey,
   isBrowserReservedChord,
   setKeyboardShortcutRecording,
@@ -48,32 +49,47 @@ export function KeyboardShortcutsSettings() {
     space: t("keyboardShortcuts.mod.space"),
   };
 
-  const applyPayload = useCallback((payload: ShortcutPayload) => {
+  const savedRef = useRef<ShortcutBindings | null>(null);
+  const draftRef = useRef<ShortcutBindings | null>(null);
+  savedRef.current = saved;
+  draftRef.current = draft;
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  const bindingsFromPayload = useCallback((payload: ShortcutPayload): ShortcutBindings => {
     const next = defaultShortcutBindings();
     for (const action of KEYBOARD_SHORTCUT_ACTIONS) {
       const row = payload.bindings[action];
       const chord = chordFromTokens(row.chord) ?? next[action].chord;
       next[action] = { enabled: row.enabled, chord, source: row.source };
     }
+    return next;
+  }, []);
+
+  const applyPayload = useCallback((payload: ShortcutPayload) => {
+    const next = bindingsFromPayload(payload);
     setSaved(next);
     setDraft(next);
-  }, []);
+  }, [bindingsFromPayload]);
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/keyboard-shortcuts", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json() as ShortcutPayload & { error?: string };
-        if (!response.ok) throw new Error(body.error || t("keyboardShortcuts.loadFailed"));
-        if (!cancelled) applyPayload(body);
+        if (!response.ok) throw new Error(body.error || tRef.current("keyboardShortcuts.loadFailed"));
+        if (cancelled) return;
+        const next = incomingShortcutDraft(savedRef.current, draftRef.current, bindingsFromPayload(body));
+        setSaved(next.saved);
+        setDraft(next.draft);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : t("keyboardShortcuts.loadFailed"));
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : tRef.current("keyboardShortcuts.loadFailed"));
       });
     return () => {
       cancelled = true;
     };
-  }, [applyPayload, t]);
+  }, [bindingsFromPayload]);
 
   const stopRecording = useCallback((restoreFocus: boolean) => {
     recordingRef.current = null;
