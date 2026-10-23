@@ -178,6 +178,36 @@ test("an open pinned explorer stays open across an empty workspace and is parked
   }
 });
 
+test("a closed destination file selection is applied and kept on the next leave", () => {
+  const states = new Map();
+  switchFileWorkspace(states, "project-b", "project-a", {
+    tabs: [tabA],
+    activeTabId: tabA.id,
+    open: false,
+  }, 0);
+  const arrived = switchFileWorkspace(states, "project-a", "project-b", {
+    tabs: [],
+    activeTabId: null,
+    open: true,
+  }, 1);
+  const panel = filePanelAfterWorkspaceSwitch("explorer", true, true, arrived);
+  assert.deepEqual(panel, { activeTabId: tabA.id, panelOpen: true });
+  const leaving = parkedFilePanel(panel.activeTabId, panel.panelOpen, true);
+  switchFileWorkspace(states, "project-b", "project-c", {
+    tabs: arrived.tabs,
+    activeTabId: leaving.activeTabId,
+    open: leaving.open,
+  }, 2);
+  const back = switchFileWorkspace(states, "project-c", "project-b", {
+    tabs: [],
+    activeTabId: null,
+    open: false,
+  }, 3);
+  assert.equal(back.activeTabId, tabA.id);
+  assert.equal(back.open, true);
+  assert.equal(back.tabs[0].id, tabA.id);
+});
+
 test("an open explorer still restores a destination file panel", () => {
   const restored = { activeTabId: tabA.id, open: true };
   for (const activeTabId of [null, "explorer"]) {

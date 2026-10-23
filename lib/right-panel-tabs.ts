@@ -56,6 +56,9 @@ export function filePanelAfterWorkspaceSwitch(
     && !activeTabId.startsWith("agent:"),
   );
   if (terminalOwnsPanel) return null;
-  if (showingPinnedExplorer(activeTabId, panelOpen, explorerPinned) && !restored.open) return null;
+  if (showingPinnedExplorer(activeTabId, panelOpen, explorerPinned) && !restored.open) {
+    if (!restored.activeTabId) return null;
+    return { activeTabId: restored.activeTabId, panelOpen: true };
+  }
   return { activeTabId: restored.activeTabId, panelOpen: restored.open };
 }
