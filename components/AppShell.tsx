@@ -149,6 +149,12 @@ export function AppShell() {
   // stale (e.g. a delete that completes after the user navigated away).
   const selectedSessionRef = useRef(selectedSession);
   selectedSessionRef.current = selectedSession;
+  const workspaceActionsRef = useRef<{
+    addExplicitSession(session: { id: string; cwd: string; projectKey?: string | null; projectRoot?: string | null }): void;
+  } | null>(null);
+  const registerWorkspaceActions = useCallback((actions: typeof workspaceActionsRef.current) => {
+    workspaceActionsRef.current = actions;
+  }, []);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
@@ -843,6 +849,8 @@ export function AppShell() {
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, options?: SelectSessionOptions) => {
+    // Explicit open only. A restore, a rerender, or the still-selected chat must not re-add membership.
+    if (!isRestore) workspaceActionsRef.current?.addExplicitSession(session);
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
     invalidateWorkspaceRestore();
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
@@ -986,8 +994,13 @@ export function AppShell() {
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
+    workspaceActionsRef.current?.addExplicitSession({
+      ...session,
+      cwd: session.cwd || activeCwd || "",
+      projectKey: session.projectKey ?? activeProjectKeyRef.current,
+    });
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+  }, [activeCwd, invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
   const deliverSessionNotification = useCallback(({
     targetSession,
@@ -1121,11 +1134,21 @@ export function AppShell() {
     setRefreshKey((k) => k + 1);
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
-    setSelectedSession((prev) => ({
-      ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+    const previous = selectedSessionRef.current;
+    const forked = {
+      ...(previous ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
-    }));
+    };
+    if (forked.cwd) {
+      workspaceActionsRef.current?.addExplicitSession({
+        id: newSessionId,
+        cwd: forked.cwd,
+        projectKey: previous?.projectKey ?? activeProjectKeyRef.current,
+        projectRoot: previous?.projectRoot,
+      });
+    }
+    setSelectedSession(forked);
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
@@ -1434,6 +1457,7 @@ export function AppShell() {
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
+        onWorkspaceActions={registerWorkspaceActions}
         controlRef={sidebarControlRef}
         onNewSessionContextChange={handleSidebarNewSessionContext}
         initialSessionId={initialSessionId}

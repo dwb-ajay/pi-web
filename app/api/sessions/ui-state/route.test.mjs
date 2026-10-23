@@ -147,6 +147,41 @@ test("a name with no room left is refused, and nothing is written", async () => 
   assert.equal(renamed.revision, 6);
 });
 
+test("a workspace add with no byte room is refused and the saved membership stays", async () => {
+  await reset();
+  const kept = await okState(await post({ action: "add-workspace-sessions", projectKey: "kept", cwd: "/kept", ids: ["stay"] }));
+  assert.deepEqual(kept.workspaces.kept.sessionIds, ["stay"]);
+  const before = await readFile(statePath, "utf8");
+  const hugeId = `h${"b".repeat(800)}`;
+  const response = await post({
+    action: "add-workspace-sessions",
+    projectKey: "huge",
+    cwd: "/huge",
+    ids: Array.from({ length: 500 }, (_, index) => `${hugeId}${index}`),
+  });
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.reason, "full");
+  assert.equal(await readFile(statePath, "utf8"), before);
+  const full = {
+    version: 1,
+    revision: kept.revision,
+    sessions: {},
+    projects: {},
+    workspaces: {
+      kept: { cwd: "/kept", sessionIds: Array.from({ length: 400 }, (_, index) => `${hugeId}${index}`) },
+    },
+    workspaceOrder: ["kept"],
+  };
+  await writeFile(statePath, JSON.stringify(full));
+  resetSessionUiStateCacheForTests();
+  const packed = await readFile(statePath, "utf8");
+  const folder = await post({ action: "ensure-workspace", projectKey: "also-full", cwd: "/also-full" });
+  assert.equal(folder.status, 409);
+  assert.equal((await folder.json()).reason, "full");
+  assert.equal(await readFile(statePath, "utf8"), packed);
+});
+
 test("refuses untrusted, non-JSON and invalid requests without writing", async () => {
   await reset();
   const cases = [

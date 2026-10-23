@@ -63,6 +63,15 @@ export async function POST(req: Request) {
     if (request.action === "rename-project" && request.name !== null && storedProjectName(state, request.projectKey) !== request.name) {
       return refusal(409, "full", `No room for another project name (at most ${MAX_PROJECT_NAMES}, ${PROJECT_NAMES_MAX_BYTES / 1024} KiB in all)`);
     }
+    if (request.action === "ensure-workspace" || request.action === "add-workspace-sessions") {
+      const record = state.workspaces?.[request.projectKey];
+      const missing = request.action === "add-workspace-sessions"
+        ? request.ids.filter((id) => !record?.sessionIds.includes(id))
+        : [];
+      if (!record || missing.length > 0) {
+        return refusal(409, "full", "No room for another workspace or selected session");
+      }
+    }
     return NextResponse.json({ state } satisfies SessionUiStateResponse, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof SessionUiStateLockedError) return refusal(409, "locked", error.message);

@@ -83,6 +83,7 @@ import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import { useSessionUiState } from "@/hooks/useSessionUiState";
 import { archiveViewState, filesFoldState, useSidebarMotion } from "@/hooks/useSidebarMotion";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { WorkspaceExplorer } from "./WorkspaceExplorer";
 import { DismissButton } from "./DismissButton";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { PiWebTitle } from "./PiWebTitle";
@@ -100,6 +101,7 @@ import {
   DotOutlineIcon,
   EyeIcon,
   FolderIcon,
+  FolderPlusIcon,
   MessageIcon,
   MoreIcon,
   ForkIcon,
@@ -202,6 +204,10 @@ interface Props {
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number, options?: SelectSessionOptions) => void;
   /** projectKey: the target's project identity when it is known (a group's "+", the composer's bar). */
   onNewSession?: (sessionId: string, cwd: string, projectKey?: string | null, options?: NewSessionOptions) => void;
+  /** Registers explicit-open membership. Null on unmount. Restore paths must not call it. */
+  onWorkspaceActions?: (actions: {
+    addExplicitSession(session: { id: string; cwd: string; projectKey?: string | null; projectRoot?: string | null }): void;
+  } | null) => void;
   /** What the bar above a fresh composer moves through (`SessionSidebarControl`). */
   controlRef?: Ref<SessionSidebarControl>;
   /** The sidebar's cwd as the bar above a fresh composer shows it; reported when that changes. */
@@ -500,7 +506,7 @@ function buttonAnchor(element: HTMLElement, align: "start" | "end"): SidebarMenu
   return { kind: "rect", rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }, align };
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, onWorkspaceActions, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
@@ -516,7 +522,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
   // Open for the files tab's project list, or for the composer's bar ("new-session").
-  const [customPathOpen, setCustomPathOpen] = useState<false | "files" | "new-session">(false);
+  const [customPathOpen, setCustomPathOpen] = useState<false | "files" | "new-session" | "workspace">(false);
   const [customPathValue, setCustomPathValue] = useState(loadLastCustomCwd);
   const [customPathError, setCustomPathError] = useState<string | null>(null);
   const [customPathValidating, setCustomPathValidating] = useState(false);
@@ -558,8 +564,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // The files below the sessions (desktop, by default: both in view, a
   // separator between them, the files section foldable to its header row),
-  // or Sessions | Files tabs (the setting, and always on phones), each panel
-  // shown alone. Both layouts render the same elements in the same order,
+  // or Workspaces | Sessions | Files tabs (the setting, and always on phones),
+  // each panel shown alone. Below the sessions the Files tab is hidden. Both layouts render the same elements in the same order,
   // only attributes and a few rows of their own differ, so a switch (the
   // setting, the phone breakpoint) never remounts the explorer, the tree or
   // the picker. The tab, the folded section, the group choices and the
@@ -568,8 +574,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // way (useFilesPlacement's server snapshot).
   const filesPlacement = useFilesPlacement();
   const stacked = !isMobile && filesPlacement === "below";
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("sessions");
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("workspaces");
   const [filesCollapsed, setFilesCollapsed] = useState(false);
+  const workspacesTabRef = useRef<HTMLButtonElement>(null);
   const sessionsTabRef = useRef<HTMLButtonElement>(null);
   const filesTabRef = useRef<HTMLButtonElement>(null);
   const sessionsPanelRef = useRef<HTMLDivElement>(null);
@@ -667,6 +674,28 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     snapshot: snapshotUiState,
     noteRevision: noteUiRevision,
   } = useSessionUiState();
+  const applyUiState = useCallback(async (request: SessionUiStateRequest) => {
+    const ok = await applyUiStateRequest(request);
+    if (!ok) setUiWriteFailures((count) => count + 1);
+    return ok;
+  }, [applyUiStateRequest]);
+
+  useEffect(() => {
+    if (!onWorkspaceActions) return;
+    onWorkspaceActions({
+      addExplicitSession(session) {
+        const projectKey = workspaceKeyOf(session);
+        if (!session.id || !session.cwd || !projectKey) return;
+        void applyUiState({
+          action: "add-workspace-sessions",
+          projectKey,
+          cwd: session.cwd,
+          ids: [session.id],
+        });
+      },
+    });
+    return () => onWorkspaceActions(null);
+  }, [applyUiState, onWorkspaceActions]);
 
   // The explorer's scroll container is always mounted (empty without a cwd),
   // so the scrollbar hook stays bound to the element that is on the page.
@@ -674,7 +703,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const explorerScrollRef = useRef<HTMLDivElement>(null);
   useScrollbarVisibility(explorerScrollRef);
   // The toolbar row's search button: always there and enabled, so focus has
-  // somewhere to go when there are no tabs (selectedTabButton).
+  // somewhere to go when the selected tab button is gone (selectedTabButton).
   const searchButtonRef = useRef<HTMLButtonElement>(null);
 
   // The files section's height below the sessions, on the sidebar's root
@@ -733,7 +762,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // choices load before the retired keys go: the old ones move to v2 then.
   useEffect(() => {
     const tab = loadSidebarTab();
-    if (tab !== "sessions") setSidebarTab(tab);
+    if (tab !== "workspaces") setSidebarTab(tab);
     const groups = loadGroupExpansion();
     if (Object.keys(groups).length > 0) setGroupExpansion(groups);
     if (loadPinnedCollapsed()) setPinnedCollapsed(true);
@@ -1193,6 +1222,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         setCustomPathValue(data.cwd);
       }
       setCustomPathOpen(false);
+      if (purpose === "workspace") {
+        void applyUiState({ action: "ensure-workspace", projectKey: data.projectKey, cwd: data.cwd });
+        setSidebarTab("workspaces");
+        saveSidebarTab("workspaces");
+        return;
+      }
       if (purpose === "new-session") {
         // The composer's bar asked: the shell decides whether its fresh
         // composer moves there, and the sidebar's cwd moves only with it.
@@ -1216,7 +1251,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     } finally {
       setCustomPathValidating(false);
     }
-  }, [customPathOpen, customPathValue, customPathValidating, focusAfterCommit]);
+  }, [applyUiState, customPathOpen, customPathValue, customPathValidating, focusAfterCommit]);
 
   const handleCustomPathClick = useCallback(() => {
     setCustomPathOpen("files");
@@ -1535,12 +1570,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   /**
    * The selected tab: focus has somewhere to go when the control it was on is
-   * gone. With the files below the sessions there are no tabs (their refs are
-   * null): the toolbar row's search button, always there and enabled.
+   * gone. Below the sessions the Files tab is not mounted: the Workspaces or
+   * Sessions tab, else the toolbar row's search button.
    */
   const selectedTabButton = useCallback(
-    () => (sessionsPanelRef.current?.hidden ? filesTabRef : sessionsTabRef).current ?? searchButtonRef.current,
-    [],
+    () => {
+      const ref = sidebarTab === "files" ? filesTabRef : sidebarTab === "sessions" ? sessionsTabRef : workspacesTabRef;
+      return ref.current ?? sessionsTabRef.current ?? searchButtonRef.current;
+    },
+    [sidebarTab],
   );
 
   // A family's row where the tree shows it now (pinned, in its group, or in
@@ -1564,11 +1602,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Pin and archive changes apply at once and are saved in the background; a
   // refused save rolls back (useSessionUiState) and says why in a toast.
-  const applyUiState = useCallback(async (request: SessionUiStateRequest) => {
-    const ok = await applyUiStateRequest(request);
-    if (!ok) setUiWriteFailures((count) => count + 1);
-    return ok;
-  }, [applyUiStateRequest]);
   useEffect(() => {
     if (uiWriteFailures === shownUiWriteFailuresRef.current) return;
     shownUiWriteFailuresRef.current = uiWriteFailures;
@@ -1593,14 +1626,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setTreeReveal({ id: treeRevealIdRef.current, at: Date.now(), rowKey: `group:${projectKey}` });
   }, [applyUiState, model.unorderedKeysByBand, projectByKey]);
 
-  // With the files below the sessions there are no tabs: whatever would pick
-  // one (the archive view, the search's fallback) leaves the saved tab as it
-  // is, for the tabs layout and phones.
+  // Saves the choice in both layouts. Below the sessions a saved Files tab
+  // still displays as Sessions until the tabs layout shows Files again.
   const switchTab = useCallback((tab: SidebarTab) => {
-    if (stacked) return;
     setSidebarTab(tab);
     saveSidebarTab(tab);
-  }, [stacked]);
+  }, []);
 
   // Every fold and unfold goes through here (the toggle, revealFiles, the
   // file search, changes and upload keys, a file manager error), and moves;
@@ -1689,14 +1720,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     if (last && (!last.isConnected || last.getClientRects().length === 0)) focusIfHidden(selectedTabButton());
   }, [stacked, selectedTabButton]);
 
+  const visibleTabs: SidebarTab[] = stacked ? ["workspaces", "sessions"] : ["workspaces", "sessions", "files"];
   const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const next: SidebarTab = event.key === "Home" ? "sessions"
-      : event.key === "End" ? "files"
-      : sidebarTab === "sessions" ? "files" : "sessions";
+    const index = Math.max(0, visibleTabs.indexOf(sidebarTab));
+    const next: SidebarTab = event.key === "Home" ? visibleTabs[0]
+      : event.key === "End" ? visibleTabs[visibleTabs.length - 1]
+      : visibleTabs[(index + (event.key === "ArrowRight" ? 1 : -1) + visibleTabs.length) % visibleTabs.length];
     switchTab(next);
-    (next === "sessions" ? sessionsTabRef : filesTabRef).current?.focus();
+    (next === "workspaces" ? workspacesTabRef : next === "sessions" ? sessionsTabRef : filesTabRef).current?.focus();
   };
 
   // A session family's pin and archive flags live on its root session.
@@ -2664,15 +2697,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // The toolbar row's search button searches the files on the files tab:
   // the head has no search of its own. Below the sessions it is the
   // sessions' search alone; the files section's header has the files'.
-  const sessionsShown = stacked || sidebarTab === "sessions";
+  const topTab: SidebarTab = stacked && sidebarTab === "files" ? "sessions" : sidebarTab;
+  const workspacesShown = topTab === "workspaces";
+  const sessionsShown = topTab === "sessions";
   const searchesFiles = !stacked && sidebarTab === "files" && explorerCwd !== null;
   // What the toolbar row's widths depend on: New's label, and the tabs (the
   // chosen tab's label is bolder, the files tab carries the count). The
   // brand's text reports its own changes (fitHeader).
-  const fitHeader = useHeaderFit(headerRef, (stacked
-    ? ["below", t("sidebar.new")]
-    : ["tabs", t("sidebar.tabSessions"), t("sidebar.tabFiles"), t("sidebar.new"), explorerCwd && changesCount > 0 ? changesCount : "", sidebarTab]
-  ).join("\n"));
+  const fitHeader = useHeaderFit(headerRef, [
+    stacked ? "below" : "tabs",
+    t("workspace.tab"),
+    t("sidebar.tabSessions"),
+    stacked ? "" : t("sidebar.tabFiles"),
+    t("sidebar.new"),
+    explorerCwd && changesCount > 0 ? changesCount : "",
+    topTab,
+  ].join("\n"));
   const archivedCount = model.archivedCount;
 
   // The files' keys: below the sessions in the files section's header row,
@@ -2802,30 +2842,45 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         />
       )}
       {/* One toolbar row, in the cells of the chat's top bar beside it (its
-          line continues that bar's): Sessions | Files, then New and the
-          search of the tab in view. Only the two tabs are the tablist. With
-          the files below the sessions there is nothing to choose: the brand
-          stands there (the panel's anchor, the versions on a click), and
-          the search is the sessions'. */}
+          line continues that bar's): Workspaces | Sessions, plus Files in the
+          tabs layout, then New and the search of the tab in view. Only those
+          tabs are the tablist. With the files below the sessions the brand
+          stands first (the panel's anchor, the versions on a click) and the
+          Files tab is hidden. */}
       <div ref={headerRef} className="sidebar-header">
         {stacked && <PiWebTitle onWidthChange={fitHeader} />}
-        {!stacked && (
-          <div className="sidebar-tabs-list" role="tablist" aria-label={t("sidebar.tabsLabel")}>
+        <div className="sidebar-tabs-list" role="tablist" aria-label={t("sidebar.tabsLabel")}>
+            <button
+              ref={workspacesTabRef}
+              type="button"
+              role="tab"
+              id="session-sidebar-tab-workspaces"
+              aria-selected={topTab === "workspaces"}
+              aria-controls="session-sidebar-panel-workspaces"
+              tabIndex={topTab === "workspaces" ? 0 : -1}
+              className={`sidebar-tab${topTab === "workspaces" ? " is-selected" : ""}`}
+              onClick={() => switchTab("workspaces")}
+              onKeyDown={handleTabKeyDown}
+            >
+              <FolderPlusIcon size={13} className="sidebar-tab-icon" />
+              <span className="sidebar-tab-label">{t("workspace.tab")}</span>
+            </button>
             <button
               ref={sessionsTabRef}
               type="button"
               role="tab"
               id="session-sidebar-tab-sessions"
-              aria-selected={sidebarTab === "sessions"}
+              aria-selected={topTab === "sessions"}
               aria-controls="session-sidebar-panel-sessions"
-              tabIndex={sidebarTab === "sessions" ? 0 : -1}
-              className={`sidebar-tab${sidebarTab === "sessions" ? " is-selected" : ""}`}
+              tabIndex={topTab === "sessions" ? 0 : -1}
+              className={`sidebar-tab${topTab === "sessions" ? " is-selected" : ""}`}
               onClick={() => switchTab("sessions")}
               onKeyDown={handleTabKeyDown}
             >
               <MessageIcon size={13} className="sidebar-tab-icon" />
               <span className="sidebar-tab-label">{t("sidebar.tabSessions")}</span>
             </button>
+            {!stacked && (
             <button
               ref={filesTabRef}
               type="button"
@@ -2843,8 +2898,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               <span className="sidebar-tab-label">{t("sidebar.tabFiles")}</span>
               {explorerCwd && changesCount > 0 && <span className="sidebar-tab-count" aria-hidden="true">{changesCount}</span>}
             </button>
+            )}
           </div>
-        )}
         <span className="sidebar-header-spacer" />
         <button
           type="button"
@@ -2866,7 +2921,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               setFileSearchOpen((open) => !open);
               return;
             }
-            if (!sessionsShown) {
+            if (!sessionsShown && !workspacesShown) {
               switchTab("sessions");
               setSessionSearchOpen(true);
               return;
@@ -2883,15 +2938,69 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         </button>
       </div>
 
+      <div
+        id="session-sidebar-panel-workspaces"
+        role={stacked ? "region" : "tabpanel"}
+        aria-label={stacked ? t("workspace.tab") : undefined}
+        aria-labelledby={stacked ? undefined : "session-sidebar-tab-workspaces"}
+        hidden={!workspacesShown}
+        className="sidebar-panel sidebar-sessions-panel"
+        onScrollCapture={rememberScroll}
+      >
+        {sessionSearchOpen && (
+          <div className="sidebar-search">
+            <input
+              id="workspace-search-input"
+              type="search"
+              autoFocus
+              value={sessionSearchQuery}
+              maxLength={200}
+              aria-label={t("workspace.pickerSearch")}
+              placeholder={t("workspace.pickerSearch")}
+              onChange={(event) => setSessionSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                  event.stopPropagation();
+                  setSessionSearchQuery("");
+                }
+              }}
+              className="sidebar-search-input"
+            />
+          </div>
+        )}
+        <WorkspaceExplorer
+          sessions={allSessions}
+          state={uiState}
+          selectedSessionId={selectedSessionId}
+          runningSessionIds={runningSessionIds}
+          query={sessionSearchOpen ? sessionSearchQuery : ""}
+          onSelectSession={(session) => handleSelectSessionFromList(session)}
+          onStartNew={(cwd, projectKey) => startNewSessionIn({ cwd, projectKey })}
+          onAddFolder={() => {
+            setCustomPathError(null);
+            setCustomPathOpen("workspace");
+          }}
+          onAddSession={(projectKey, cwd, id) => {
+            void applyUiState({ action: "add-workspace-sessions", projectKey, cwd, ids: [id] });
+          }}
+          onRemoveSession={(projectKey, id) => {
+            void applyUiState({ action: "remove-workspace-sessions", projectKey, ids: [id] });
+          }}
+          onRemoveWorkspace={(projectKey) => {
+            void applyUiState({ action: "remove-workspace", projectKey });
+          }}
+        />
+      </div>
+
       {/* Sessions: every project's sessions, or the archive. A tab's panel,
-          or the top section, always shown, filling what the files leave. */}
+          or the top section, filling what the files leave. */}
       <div
         ref={sessionsPanelRef}
         id="session-sidebar-panel-sessions"
         role={stacked ? "region" : "tabpanel"}
         aria-label={stacked ? t("sidebar.tabSessions") : undefined}
         aria-labelledby={stacked ? undefined : "session-sidebar-tab-sessions"}
-        hidden={!stacked && sidebarTab !== "sessions"}
+        hidden={!sessionsShown}
         className="sidebar-panel sidebar-sessions-panel"
         onScrollCapture={rememberScroll}
       >

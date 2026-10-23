@@ -32,6 +32,7 @@ test("a linked session that is gone gets no other session in its place (#1168)",
       const urls = [];
       const context = vm.createContext({
         ...draftStore,
+        workspaceActionsRef: { current: null },
         crypto: globalThis.crypto,
         URLSearchParams,
         window: { location: { pathname: "/", search: linkedId ? `?session=${linkedId}` : "" } },
@@ -107,6 +108,7 @@ test("New restores the draft after session navigation and workspace auto-restore
       const response = Promise.withResolvers();
       const context = vm.createContext({
         ...draftStore,
+        workspaceActionsRef: { current: null },
         crypto: globalThis.crypto,
         queueMicrotask,
         requestAnimationFrame: () => {},
@@ -218,6 +220,7 @@ test("New in another project adopts it up front and parks the composer's draft",
   const fileTab = { id: "file:/p1/notes.md", filePath: "/p1/notes.md" };
   const context = vm.createContext({
     ...draftStore,
+        workspaceActionsRef: { current: null },
     crypto: globalThis.crypto,
     URLSearchParams,
     window: { location: { pathname: "/", search: "" } },
@@ -305,6 +308,7 @@ test("the composer's bar moves the fresh composer's draft and model picks instea
   const choices = { model: { provider: "custom", modelId: "fast" }, thinkingLevel: "high" };
   const context = vm.createContext({
     ...draftStore,
+        workspaceActionsRef: { current: null },
     crypto: globalThis.crypto,
     URLSearchParams,
     window: { location: { pathname: "/", search: "" } },
@@ -478,6 +482,7 @@ test("a new session puts the caret in the fresh composer on desktop only (#1313)
   const focused = [];
   const context = vm.createContext({
     ...draftStore,
+        workspaceActionsRef: { current: null },
     crypto: globalThis.crypto,
     URLSearchParams,
     window: { location: { pathname: "/", search: "" } },

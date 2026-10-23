@@ -36,7 +36,7 @@ Coverage:
   refresh, sync between tabs and reset independently without changing width or
   font size. Headings and Markdown emphasis retain their weights.
 - On a desktop the sidebar shows the files below the sessions; Settings ›
-  General › File browser brings back the Sessions | Files tabs and returns,
+  General › File browser brings back the Files tab beside Workspaces and Sessions and returns,
   without remounting the file tree (its file search keeps its query).
 - Unknown sessions and paths outside the fixture project are rejected.
 - Sidebar sessions open in browser tabs (`session-navigation.mjs`, desktop
