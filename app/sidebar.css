@@ -1119,6 +1119,11 @@ a.session-tree-main {
   overflow: hidden;
 }
 
+/* Left placement: the home is not a flex item, so the files panel stays the sidebar's flex child. */
+.sidebar-files-home:not([hidden]) {
+  display: contents;
+}
+
 /* The one explorer, moved into the file panel's pinned tab. */
 .right-panel-explorer-host {
   height: 100%;

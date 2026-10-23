@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createJiti } from "jiti";
 
-// Server snapshot of file-explorer placement is right: the left sidebar does not also mount the explorer.
+// Server snapshot of file-explorer placement is right: one files panel, in the hidden home, not a second explorer and not the Files tab.
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
@@ -18,7 +18,7 @@ test("right placement keeps Sessions on the left and does not render a second ex
     selectedCwd: "/work/alpha",
   })));
   assert.match(html, /id="session-sidebar-panel-sessions"/);
-  assert.doesNotMatch(html, /id="session-sidebar-panel-files"/);
+  assert.equal(html.match(/id="session-sidebar-panel-files"/g)?.length ?? 0, 1);
   assert.doesNotMatch(html, /id="session-sidebar-tab-files"/);
   assert.doesNotMatch(html, /is-files-below/);
 });
