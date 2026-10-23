@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { openFileTab, saveFileViewerState, saveParkedFileViewerState, switchFileWorkspace } from "./file-tab-state.ts";
+import { filePanelAfterWorkspaceSwitch, parkedFilePanel } from "../lib/right-panel-tabs.ts";
 
 const tabA = {
   id: "file:/repo/a.ts",
@@ -158,4 +159,49 @@ test("opening a PDF without a page fragment clears a previous jump", () => {
   const [next] = openFileTab([{ ...tabA, page: 12 }], openA);
   assert.equal(next.page, undefined);
   assert.equal(next.viewerRevision, 1);
+});
+
+test("an open pinned explorer stays open across an empty workspace and is parked open", () => {
+  const states = new Map();
+  for (const activeTabId of [null, "explorer"]) {
+    const parked = parkedFilePanel(activeTabId, true, true);
+    assert.deepEqual(parked, { activeTabId: null, open: true });
+    const next = switchFileWorkspace(states, "project-a", "project-b", {
+      tabs: [],
+      activeTabId: parked.activeTabId,
+      open: parked.open,
+    }, 0);
+    assert.equal(next.open, false);
+    assert.equal(filePanelAfterWorkspaceSwitch(activeTabId, true, true, next), null);
+    assert.equal(states.get("project-a").open, true);
+    states.clear();
+  }
+});
+
+test("returning to a parked open explorer reopens the panel on the explorer", () => {
+  const states = new Map();
+  const parked = parkedFilePanel(null, true, true);
+  switchFileWorkspace(states, "project-a", "project-b", { tabs: [tabA], ...parked }, 0);
+  const back = switchFileWorkspace(states, "project-b", "project-a", {
+    tabs: [tabB],
+    activeTabId: tabB.id,
+    open: true,
+  }, 1);
+  const panel = filePanelAfterWorkspaceSwitch(tabB.id, true, true, back);
+  assert.deepEqual(panel, { activeTabId: null, panelOpen: true });
+});
+
+test("a closed explorer and a left placement still restore the other workspace's panel", () => {
+  assert.deepEqual(parkedFilePanel(null, false, true), { activeTabId: null, open: false });
+  assert.deepEqual(parkedFilePanel(null, true, false), { activeTabId: null, open: false });
+  const restored = { activeTabId: tabA.id, open: true };
+  assert.deepEqual(filePanelAfterWorkspaceSwitch(null, true, false, restored), {
+    activeTabId: tabA.id,
+    panelOpen: true,
+  });
+});
+
+test("a terminal tab keeps the panel and does not park the explorer as open", () => {
+  assert.deepEqual(parkedFilePanel("terminal:1", true, true), { activeTabId: null, open: false });
+  assert.equal(filePanelAfterWorkspaceSwitch("terminal:1", true, true, { activeTabId: null, open: false }), null);
 });
