@@ -149,20 +149,20 @@ export function isBrowserReservedChord(chord: ShortcutChord): boolean {
 }
 
 /**
- * Chords the page already handles, on every platform the shared file can mean.
- * Ctrl+Alt+N starts a new session. primary+Enter (and Ctrl/Cmd+Enter) submits
- * the composer and Settings add boxes. primary+I (and Ctrl/Cmd+I) inserts a
- * source mention. `primary` is Ctrl or Cmd, so both spellings collide.
+ * Chords the existing handlers still accept, on every platform the shared file
+ * can mean. New session is Ctrl+Alt+N with any extra Shift or Meta (`primary`
+ * is Ctrl on Windows and Linux). Submit is Ctrl/Cmd+Enter with any extra
+ * Shift or Alt. Source mention is Ctrl/Cmd+I with neither Alt nor Shift.
+ * A typed AltGr character is not N, so it is not a new-session chord.
  */
 export function appActionCollision(chord: ShortcutChord): AppActionId | null {
   const modifiers = new Set(chord.modifiers);
-  const usesCtrl = modifiers.has("ctrl") || modifiers.has("primary");
-  const exactCtrlAlt = modifiers.size === 2 && usesCtrl && modifiers.has("alt") && !modifiers.has("meta") && !modifiers.has("shift");
-  if (exactCtrlAlt && chord.key === "n") return "newSession";
   const key = chord.key.toLowerCase();
-  const hasCommand = modifiers.has("primary") || modifiers.has("ctrl") || modifiers.has("meta");
+  const hasCtrl = modifiers.has("ctrl") || modifiers.has("primary");
+  const hasCommand = hasCtrl || modifiers.has("meta");
+  if (hasCtrl && modifiers.has("alt") && key === "n") return "newSession";
   if (!hasCommand) return null;
-  if (!modifiers.has("shift") && key === "enter") return "composerSubmit";
+  if (key === "enter") return "composerSubmit";
   if (!modifiers.has("alt") && !modifiers.has("shift") && key === "i") return "sourceMention";
   return null;
 }

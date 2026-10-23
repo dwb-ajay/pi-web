@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
@@ -268,15 +268,3 @@ export function shortcutBindingsPayload(bindings: ShortcutBindings): {
   };
 }
 
-/** Kept so a corrupt file can be set aside by a later repair, not by a save. */
-export function corruptShortcutBackupPath(path: string): string {
-  return `${path}.corrupt-${Date.now()}`;
-}
-
-export function moveCorruptShortcutFile(path: string): void {
-  try {
-    renameSync(path, corruptShortcutBackupPath(path));
-  } catch {
-    // A failed backup must not become a successful overwrite.
-  }
-}
