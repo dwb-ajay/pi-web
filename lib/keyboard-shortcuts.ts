@@ -39,7 +39,7 @@ export const DEFAULT_SHORTCUT_CHORDS: Record<KeyboardShortcutAction, ShortcutCho
 };
 
 /** App actions this page already owns. A saved shortcut must not take one. */
-export const APP_ACTION_IDS = ["newSession"] as const;
+export const APP_ACTION_IDS = ["newSession", "composerSubmit", "sourceMention"] as const;
 
 export type AppActionId = (typeof APP_ACTION_IDS)[number];
 
@@ -55,6 +55,8 @@ export interface ShortcutKeyEvent {
   metaKey: boolean;
   repeat?: boolean;
   isComposing?: boolean;
+  /** Set when a nearer handler already claimed this keydown. */
+  defaultPrevented?: boolean;
 }
 
 export function isKeyboardShortcutAction(value: unknown): value is KeyboardShortcutAction {
@@ -147,14 +149,21 @@ export function isBrowserReservedChord(chord: ShortcutChord): boolean {
 }
 
 /**
- * Ctrl+Alt+N starts a new session (`isNewSessionShortcut`). `primary` is Ctrl
- * on Windows and Linux, and the file is shared, so primary+Alt+N collides too.
+ * Chords the page already handles, on every platform the shared file can mean.
+ * Ctrl+Alt+N starts a new session. primary+Enter (and Ctrl/Cmd+Enter) submits
+ * the composer and Settings add boxes. primary+I (and Ctrl/Cmd+I) inserts a
+ * source mention. `primary` is Ctrl or Cmd, so both spellings collide.
  */
 export function appActionCollision(chord: ShortcutChord): AppActionId | null {
   const modifiers = new Set(chord.modifiers);
   const usesCtrl = modifiers.has("ctrl") || modifiers.has("primary");
   const exactCtrlAlt = modifiers.size === 2 && usesCtrl && modifiers.has("alt") && !modifiers.has("meta") && !modifiers.has("shift");
   if (exactCtrlAlt && chord.key === "n") return "newSession";
+  const key = chord.key.toLowerCase();
+  const hasCommand = modifiers.has("primary") || modifiers.has("ctrl") || modifiers.has("meta");
+  if (!hasCommand) return null;
+  if (!modifiers.has("shift") && key === "enter") return "composerSubmit";
+  if (!modifiers.has("alt") && !modifiers.has("shift") && key === "i") return "sourceMention";
   return null;
 }
 
@@ -183,6 +192,34 @@ export function shortcutDraftIssues(bindings: ShortcutBindings): ShortcutDraftIs
     }
   }
   return issues;
+}
+
+/**
+ * A load may replace the draft only while it still matches the last save.
+ * A recorded combination that has not been saved stays, including when a
+ * later payload arrives because the language changed.
+ */
+export function incomingShortcutDraft(
+  saved: ShortcutBindings | null,
+  draft: ShortcutBindings | null,
+  incoming: ShortcutBindings,
+): { saved: ShortcutBindings; draft: ShortcutBindings } {
+  if (saved && draft && bindingsDirty(draft, saved)) return { saved, draft };
+  return { saved: incoming, draft: incoming };
+}
+
+export interface ShortcutLoadGeneration {
+  id: number;
+}
+
+export function beginShortcutLoad(generation: ShortcutLoadGeneration): number {
+  generation.id += 1;
+  return generation.id;
+}
+
+/** A response applies only when no later load has started. */
+export function shortcutLoadIsCurrent(generation: ShortcutLoadGeneration, requestId: number): boolean {
+  return generation.id === requestId;
 }
 
 export function bindingsDirty(draft: ShortcutBindings, saved: ShortcutBindings): boolean {
@@ -243,7 +280,7 @@ export function matchShortcutAction(
   bindings: ShortcutBindings,
   platform: ShortcutPlatform,
 ): KeyboardShortcutAction | null {
-  if (event.repeat || event.isComposing || event.key === "Process") return null;
+  if (event.repeat || event.isComposing || event.key === "Process" || event.defaultPrevented) return null;
   const chord = chordFromKeyEvent(event, platform);
   if (!chord) return null;
   const key = chordKey(chord);

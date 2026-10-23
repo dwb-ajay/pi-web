@@ -5,9 +5,11 @@ import {
   KEYBOARD_SHORTCUTS_CHANGED_EVENT,
   chordFromTokens,
   currentShortcutPlatform,
+  beginShortcutLoad,
   defaultShortcutBindings,
   isKeyboardShortcutRecording,
   matchShortcutAction,
+  shortcutLoadIsCurrent,
   shortcutRepeatSuppressed,
   type KeyboardShortcutAction,
   type ShortcutBindings,
@@ -115,18 +117,20 @@ export function useGlobalKeyboardShortcuts(
 ): void {
   const { onNewSession, activeCwd, onToggleLeftSidebar, onToggleRightSidebar, onOpenSettings } = options;
   const bindingsRef = useRef<ShortcutBindings>(defaultShortcutBindings());
+  const loadGeneration = useRef({ id: 0 });
   const platform = currentShortcutPlatform();
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
+      const requestId = beginShortcutLoad(loadGeneration.current);
       void fetch("/api/keyboard-shortcuts", { cache: "no-store" })
         .then(async (response) => {
           if (!response.ok) return;
           const body = await response.json() as {
             bindings?: Record<KeyboardShortcutAction, { enabled: boolean; chord: string[]; source: "default" | "custom" }>;
           };
-          if (cancelled || !body.bindings) return;
+          if (cancelled || !shortcutLoadIsCurrent(loadGeneration.current, requestId) || !body.bindings) return;
           const next = defaultShortcutBindings();
           for (const action of Object.keys(next) as KeyboardShortcutAction[]) {
             const row = body.bindings[action];
@@ -171,6 +175,7 @@ export function useGlobalKeyboardShortcuts(
         return;
       }
 
+      if (e.defaultPrevented) return;
       if (shortcutRepeatSuppressed(e, bindingsRef.current, platform)) {
         e.preventDefault();
         return;
