@@ -475,6 +475,16 @@ export function AppShell() {
     setRightPanelOpen((open) => !open);
   }, [isMobile]);
 
+  const revealRightExplorer = useCallback(() => {
+    if (isMobile) {
+      setSidebarOpen(false);
+      setActiveTopPanel(null);
+      setMobileToolbarMoreOpen(false);
+    }
+    setActiveFileTabId(EXPLORER_TAB_ID);
+    setRightPanelOpen(true);
+  }, [isMobile]);
+
   const handleRightPanelExpandToggle = useCallback(() => {
     setActiveTopPanel(null);
     setRightPanelExpanded((expanded) => !expanded);
@@ -1466,6 +1476,8 @@ export function AppShell() {
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
         fileExplorerHost={explorerOnRight ? fileExplorerHost : null}
+        rightExplorerShown={explorerOnRight && rightPanelOpen && (activeFileTabId == null || activeFileTabId === EXPLORER_TAB_ID)}
+        onRevealRightExplorer={explorerOnRight ? revealRightExplorer : undefined}
         onOpenTerminal={handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
@@ -2692,6 +2704,7 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
+        inert={rightPanelOpen ? undefined : true}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelFullWidth ? " right-panel-full-width" : ""}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
