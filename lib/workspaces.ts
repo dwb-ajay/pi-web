@@ -58,7 +58,7 @@ export function workspacePickerMenuRows<T extends WorkspaceCatalogueSession>(
   return workspacePickerSessions(sessions, projectKey, "").map((session) => ({
     ...session,
     label: session.name || session.firstMessage || session.id,
-    searchTitle: `${session.id} ${session.cwd}`,
+    searchTitle: `${session.name ?? ""} ${session.firstMessage} ${session.id} ${session.cwd}`,
     added: memberIds.has(session.id),
   }));
 }
