@@ -125,15 +125,17 @@ test("on a desktop the files sit below the sessions by default, both in view", (
   // and useIsMobile's server snapshots): the stacked layout.
   const html = render({ selectedCwd: "/work/alpha", onOpenTerminal: noop });
   assert.match(html, /^<div class="session-sidebar is-files-below" style="--sidebar-files-height:320px">/);
-  // No tabs: the brand (its name says the versions a click shows), then New
-  // and the sessions' search. No view options.
-  assert.match(html, /<div class="sidebar-header"><button type="button" class="sidebar-brand" aria-label="Pi Web, versions: web [^",]+, pi [^",]+">Pi Web<\/button><span class="sidebar-header-spacer"><\/span><button type="button" class="sidebar-new-button"/);
-  assert.doesNotMatch(html, /role="tablist"|role="tab"|role="tabpanel"|View options|sidebar-title/);
+  // Workspaces | Sessions stay available when files sit below. The brand stays. No Files tab.
+  assert.match(html, /<div class="sidebar-header"><button type="button" class="sidebar-brand" aria-label="Pi Web, versions: web [^",]+, pi [^",]+">Pi Web<\/button><div class="sidebar-tabs-list" role="tablist"/);
+  assert.match(html, /id="session-sidebar-tab-workspaces"/);
+  assert.match(html, /id="session-sidebar-tab-sessions"/);
+  assert.doesNotMatch(html, /id="session-sidebar-tab-files"|View options|sidebar-title/);
+  assert.equal(openingTag(html, "session-sidebar-panel-workspaces"), '<div id="session-sidebar-panel-workspaces" role="region" aria-label="Workspaces" class="sidebar-panel sidebar-sessions-panel">');
   assert.match(html, /<span class="sidebar-new-label">New<\/span><\/button><button type="button" title="Search conversations" aria-label="Search conversations" aria-expanded="false" aria-controls="session-search-input" class="sidebar-search-toggle">/);
   // Two regions, both shown: the sessions, the separator, the files.
   const sessions = openingTag(html, "session-sidebar-panel-sessions");
   const files = openingTag(html, "session-sidebar-panel-files");
-  assert.equal(sessions, '<div id="session-sidebar-panel-sessions" role="region" aria-label="Sessions" class="sidebar-panel sidebar-sessions-panel">');
+  assert.equal(sessions, '<div id="session-sidebar-panel-sessions" role="region" aria-label="Sessions" hidden="" class="sidebar-panel sidebar-sessions-panel">');
   assert.equal(files, '<div id="session-sidebar-panel-files" role="region" aria-label="Files" class="sidebar-panel sidebar-files-panel">');
   const separator = html.slice(html.indexOf('role="separator"') - 200, html.indexOf(files));
   assert.ok(html.indexOf(sessions) < html.indexOf('role="separator"') && html.indexOf('role="separator"') < html.indexOf(files), "sessions, separator, files");
@@ -413,7 +415,8 @@ test("the layout, the tab and the fold chosen last never change the first render
   assert.match(clientHtml, /^<div class="session-sidebar is-files-below" style="--sidebar-files-height:320px">/);
   assert.doesNotMatch(openingTag(clientHtml, "session-sidebar-panel-files"), /hidden/);
   assert.equal(openingTag(clientHtml, "session-sidebar-files-body"), '<div id="session-sidebar-files-body" class="sidebar-files-body">');
-  assert.doesNotMatch(clientHtml, /role="tablist"/);
+  assert.match(clientHtml, /id="session-sidebar-tab-workspaces"/);
+  assert.doesNotMatch(clientHtml, /id="session-sidebar-tab-files"/);
 });
 
 test("the files show the composer bar's picker in one row below the sessions, asking for a project until it has one", () => {
