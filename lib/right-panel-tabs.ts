@@ -19,3 +19,41 @@ export function activeTabAfterClose(
 export function shouldClosePanelAfterTabRemoval(remainingCloseableTabs: number, explorerPinned: boolean): boolean {
   return remainingCloseableTabs === 0 && !explorerPinned;
 }
+
+function showingPinnedExplorer(activeTabId: string | null, panelOpen: boolean, explorerPinned: boolean): boolean {
+  return explorerPinned && panelOpen && (activeTabId == null || activeTabId === EXPLORER_TAB_ID);
+}
+
+/** What the leaving workspace stores. An open pinned explorer is open, not a closed empty panel. */
+export function parkedFilePanel(
+  activeTabId: string | null,
+  panelOpen: boolean,
+  explorerPinned: boolean,
+): { activeTabId: string | null; open: boolean } {
+  const activeFileId = activeTabId?.startsWith("file:") ? activeTabId : null;
+  return {
+    activeTabId: activeFileId,
+    open: panelOpen && (Boolean(activeFileId) || showingPinnedExplorer(activeTabId, panelOpen, explorerPinned)),
+  };
+}
+
+/**
+ * Panel state after a workspace switch. Null means the current view keeps the
+ * panel (open pinned explorer, or a terminal tab). File tabs still swap.
+ */
+export function filePanelAfterWorkspaceSwitch(
+  activeTabId: string | null,
+  panelOpen: boolean,
+  explorerPinned: boolean,
+  restored: { activeTabId: string | null; open: boolean },
+): { activeTabId: string | null; panelOpen: boolean } | null {
+  const activeFileId = activeTabId?.startsWith("file:") ? activeTabId : null;
+  const terminalOwnsPanel = Boolean(
+    activeTabId
+    && activeTabId !== EXPLORER_TAB_ID
+    && !activeFileId
+    && !activeTabId.startsWith("agent:"),
+  );
+  if (showingPinnedExplorer(activeTabId, panelOpen, explorerPinned) || terminalOwnsPanel) return null;
+  return { activeTabId: restored.activeTabId, panelOpen: restored.open };
+}
