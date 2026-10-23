@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useChatAppearance";
 import { useEnterSendMode, setEnterSendMode } from "@/hooks/useEnterSendMode";
 import { useFilesPlacement, setFilesPlacement } from "@/hooks/useFilesPlacement";
+import { useFileExplorerPlacement, setFileExplorerPlacement } from "@/hooks/useFileExplorerPlacement";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
 import {
@@ -80,6 +81,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
   const enterSendMode = useEnterSendMode();
   const filesPlacement = useFilesPlacement();
+  const fileExplorerPlacement = useFileExplorerPlacement();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -383,6 +385,41 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.sidebar")}</h3>
+        <div className="settings-chat-options">
+          <div
+            className="settings-chat-option settings-chat-switch-option"
+            role="radiogroup"
+            aria-label={t("filePlacement.label")}
+            aria-describedby="file-placement-description"
+          >
+            <span>{t("filePlacement.label")}</span>
+            <div className="settings-send-mode-options">
+              <label className="settings-send-mode-option">
+                <input
+                  type="radio"
+                  name="file-explorer-placement"
+                  value="left"
+                  checked={fileExplorerPlacement === "left"}
+                  onChange={() => setFileExplorerPlacement("left")}
+                  className="sr-only"
+                />
+                <span className="settings-send-mode-label">{t("filePlacement.left")}</span>
+              </label>
+              <label className="settings-send-mode-option">
+                <input
+                  type="radio"
+                  name="file-explorer-placement"
+                  value="right"
+                  checked={fileExplorerPlacement === "right"}
+                  onChange={() => setFileExplorerPlacement("right")}
+                  className="sr-only"
+                />
+                <span className="settings-send-mode-label">{t("filePlacement.right")}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <p id="file-placement-description" className="settings-general-description">{t("filePlacement.description")}</p>
         <div className="settings-chat-options">
           <div
             className="settings-chat-option settings-chat-switch-option"

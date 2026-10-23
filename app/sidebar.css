@@ -1119,6 +1119,25 @@ a.session-tree-main {
   overflow: hidden;
 }
 
+/* The one explorer, moved into the file panel's pinned tab. */
+.right-panel-explorer-host {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.right-panel-explorer-host[hidden] {
+  display: none;
+}
+
+.right-panel-explorer-host .sidebar-files-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
 /* The files below the sessions: the sessions fill what the files leave and
    keep a few rows (SESSIONS_SECTION_MIN_HEIGHT in SessionSidebar.tsx); the
    files section is as tall as the separator sets (--sidebar-files-height, on
