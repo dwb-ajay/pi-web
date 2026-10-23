@@ -28,11 +28,8 @@ export const MAX_PROJECT_NAME_LENGTH = 80;
 export const MAX_PROJECT_NAMES = 1000;
 /** Most UTF-8 bytes `projectNames` takes as JSON: its keys are projectKeys, as long as the order's. */
 export const PROJECT_NAMES_MAX_BYTES = 256 * 1024;
-/** Storage guard for curated workspaces. Not a product limit of two to four. */
-export const MAX_WORKSPACES = 1000;
+/** UTF-8 byte guard for curated workspaces. Not a count of workspaces or selected sessions. */
 export const WORKSPACES_MAX_BYTES = 256 * 1024;
-/** Storage guard for selected session ids across every workspace. */
-export const MAX_WORKSPACE_SESSION_IDS = 5000;
 
 /** Epoch ms, keyed by the FAMILY ROOT session id. */
 export interface SessionUiFamilyState { pinnedAt?: number; archivedAt?: number }
@@ -222,33 +219,6 @@ function workspacesBytes(workspaces: Record<string, WorkspaceRecord>, order: rea
   return bytes + utf8.encode(JSON.stringify(order)).length;
 }
 
-/** Drops trailing workspaces, then trailing session ids, until the storage guard fits. */
-function fitWorkspaces(
-  workspaces: Record<string, WorkspaceRecord>,
-  order: readonly string[],
-): { workspaces: Record<string, WorkspaceRecord>; order: string[] } {
-  const next: Record<string, WorkspaceRecord> = {};
-  const kept: string[] = [];
-  let sessions = 0;
-  for (const key of order) {
-    if (!hasOwn(workspaces, key) || kept.length >= MAX_WORKSPACES) continue;
-    const record = workspaces[key];
-    const sessionIds: string[] = [];
-    for (const id of record.sessionIds) {
-      if (sessions >= MAX_WORKSPACE_SESSION_IDS) break;
-      sessionIds.push(id);
-      sessions++;
-    }
-    const candidate = { cwd: record.cwd, sessionIds };
-    const trial = { ...next, [key]: candidate };
-    const trialOrder = [...kept, key];
-    if (workspacesBytes(trial, trialOrder) > WORKSPACES_MAX_BYTES) continue;
-    next[key] = candidate;
-    kept.push(key);
-  }
-  return { workspaces: next, order: kept };
-}
-
 function cloneWorkspaces(state: SessionUiState): { workspaces: Record<string, WorkspaceRecord>; order: string[] } {
   const workspaces: Record<string, WorkspaceRecord> = {};
   for (const [key, record] of Object.entries(state.workspaces ?? {})) {
@@ -262,16 +232,18 @@ function writeWorkspaces(
   workspaces: Record<string, WorkspaceRecord>,
   order: string[],
 ): boolean {
-  const fitted = fitWorkspaces(workspaces, order);
+  const nextBytes = workspacesBytes(workspaces, order);
+  const previousBytes = workspacesBytes(state.workspaces ?? {}, state.workspaceOrder ?? []);
+  if (nextBytes > WORKSPACES_MAX_BYTES && nextBytes >= previousBytes) return false;
   const previous = state.workspaceOrder ?? [];
-  const same = sameOrder(previous, fitted.order) && JSON.stringify(state.workspaces ?? {}) === JSON.stringify(fitted.workspaces);
+  const same = sameOrder(previous, order) && JSON.stringify(state.workspaces ?? {}) === JSON.stringify(workspaces);
   if (same) return false;
-  if (fitted.order.length === 0) {
+  if (order.length === 0) {
     delete state.workspaces;
     delete state.workspaceOrder;
   } else {
-    state.workspaces = fitted.workspaces;
-    state.workspaceOrder = fitted.order;
+    state.workspaces = workspaces;
+    state.workspaceOrder = order;
   }
   return true;
 }
@@ -356,7 +328,6 @@ function normalizeWorkspaces(
 ): { workspaces: Record<string, WorkspaceRecord>; order: string[] } | null {
   if (!isPlainObject(rawWorkspaces)) return null;
   const workspaces: Record<string, WorkspaceRecord> = {};
-  let sessionCount = 0;
   for (const [key, entry] of Object.entries(rawWorkspaces)) {
     if (!isProjectString(key) || !isPlainObject(entry) || !isProjectString(entry.cwd)) continue;
     if (!Array.isArray(entry.sessionIds)) continue;
@@ -364,13 +335,10 @@ function normalizeWorkspaces(
     const seen = new Set<string>();
     for (const id of entry.sessionIds) {
       if (!isSessionId(id) || seen.has(id)) continue;
-      if (sessionCount >= MAX_WORKSPACE_SESSION_IDS) break;
       seen.add(id);
       sessionIds.push(id);
-      sessionCount++;
     }
     workspaces[key] = { cwd: entry.cwd, sessionIds };
-    if (Object.keys(workspaces).length >= MAX_WORKSPACES) break;
   }
   const orderedKeys = Array.isArray(rawOrder)
     ? rawOrder.filter((key): key is string => isProjectString(key) && hasOwn(workspaces, key))
@@ -384,8 +352,7 @@ function normalizeWorkspaces(
   for (const key of Object.keys(workspaces)) {
     if (!seenOrder.has(key)) order.push(key);
   }
-  const fitted = fitWorkspaces(workspaces, order);
-  return fitted.order.length > 0 ? fitted : null;
+  return order.length > 0 ? { workspaces, order } : null;
 }
 
 type ParseResult = { ok: true; request: SessionUiStateRequest } | { ok: false; error: string };

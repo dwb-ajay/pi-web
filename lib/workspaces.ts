@@ -49,6 +49,20 @@ export function workspacePickerSessions<T extends WorkspaceCatalogueSession>(
     });
 }
 
+/** Every project session the Add existing menu lists, newest first. No row cap. */
+export function workspacePickerMenuRows<T extends WorkspaceCatalogueSession>(
+  sessions: readonly T[],
+  projectKey: string,
+  memberIds: ReadonlySet<string>,
+): Array<T & { label: string; searchTitle: string; added: boolean }> {
+  return workspacePickerSessions(sessions, projectKey, "").map((session) => ({
+    ...session,
+    label: session.name || session.firstMessage || session.id,
+    searchTitle: `${session.id} ${session.cwd}`,
+    added: memberIds.has(session.id),
+  }));
+}
+
 /** Membership order. Missing catalogue rows stay, so a removed file can still be unlisted. Running state is ignored. */
 export function orderedWorkspaceSessionIds(sessionIds: readonly string[]): string[] {
   const seen = new Set<string>();
