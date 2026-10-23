@@ -1,6 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import {
+  KEYBOARD_SHORTCUTS_CHANGED_EVENT,
+  chordFromTokens,
+  currentShortcutPlatform,
+  defaultShortcutBindings,
+  isKeyboardShortcutRecording,
+  matchShortcutAction,
+  shortcutRepeatSuppressed,
+  type KeyboardShortcutAction,
+  type ShortcutBindings,
+} from "@/lib/keyboard-shortcuts";
 
 // ---------------------------------------------------------------------------
 // Module-level registry — ChatWindow registers the abort handler here so that
@@ -70,6 +81,12 @@ interface UseGlobalKeyboardShortcutsOptions {
   onNewSession?: (cwd: string) => void;
   /** The currently selected project directory (sidebar cwd). */
   activeCwd?: string | null;
+  /** Independent of the right sidebar. The layout owns what the toggle does. */
+  onToggleLeftSidebar?: () => void;
+  /** Independent of the left sidebar. The layout owns what the toggle does. */
+  onToggleRightSidebar?: () => void;
+  /** Opens Settings. A second press while it is open must not reset the page. */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -79,6 +96,13 @@ interface UseGlobalKeyboardShortcutsOptions {
  *   Esc          – stop the running agent (via module-level abort handler)
  *   Ctrl+Alt+N   – create a new session in the active project directory
  *                  (see `isNewSessionShortcut()` for macOS and AltGr)
+ *   primary+B    – toggle the left sidebar (Cmd on macOS, Ctrl elsewhere)
+ *   primary+Shift+B – toggle the right sidebar
+ *   primary+,    – open Settings
+ *
+ * The three configurable shortcuts also fire while a text field has focus.
+ * They do not fire while a replacement is being recorded, and a held key
+ * does not fire them again. Escape and Ctrl+Alt+N are not configurable here.
  *
  * Note: Esc inside <textarea> or <input> is deliberately NOT handled here.
  * ChatInput manages its own Esc logic (closing slash / @ file menus, stopping
@@ -89,10 +113,50 @@ interface UseGlobalKeyboardShortcutsOptions {
 export function useGlobalKeyboardShortcuts(
   options: UseGlobalKeyboardShortcutsOptions,
 ): void {
-  const { onNewSession, activeCwd } = options;
+  const { onNewSession, activeCwd, onToggleLeftSidebar, onToggleRightSidebar, onOpenSettings } = options;
+  const bindingsRef = useRef<ShortcutBindings>(defaultShortcutBindings());
+  const platform = currentShortcutPlatform();
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void fetch("/api/keyboard-shortcuts", { cache: "no-store" })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const body = await response.json() as {
+            bindings?: Record<KeyboardShortcutAction, { enabled: boolean; chord: string[]; source: "default" | "custom" }>;
+          };
+          if (cancelled || !body.bindings) return;
+          const next = defaultShortcutBindings();
+          for (const action of Object.keys(next) as KeyboardShortcutAction[]) {
+            const row = body.bindings[action];
+            if (!row) continue;
+            const chord = chordFromTokens(row.chord);
+            if (!chord) continue;
+            next[action] = { enabled: row.enabled, chord, source: row.source };
+          }
+          bindingsRef.current = next;
+        })
+        .catch(() => {
+          // A failed load keeps the last known bindings, or the defaults.
+        });
+    };
+    load();
+    const onChanged = () => load();
+    const onFocus = () => load();
+    window.addEventListener(KEYBOARD_SHORTCUTS_CHANGED_EVENT, onChanged);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(KEYBOARD_SHORTCUTS_CHANGED_EVENT, onChanged);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      if (isKeyboardShortcutRecording()) return;
+
       // ---- Esc: stop agent ----
       if (e.key === "Escape") {
         handleGlobalEscape(e);
@@ -104,10 +168,22 @@ export function useGlobalKeyboardShortcuts(
         if (!activeCwd || !onNewSession) return;
         e.preventDefault();
         onNewSession(activeCwd);
+        return;
       }
+
+      if (shortcutRepeatSuppressed(e, bindingsRef.current, platform)) {
+        e.preventDefault();
+        return;
+      }
+      const action = matchShortcutAction(e, bindingsRef.current, platform);
+      if (!action) return;
+      e.preventDefault();
+      if (action === "toggleLeftSidebar") onToggleLeftSidebar?.();
+      else if (action === "toggleRightSidebar") onToggleRightSidebar?.();
+      else onOpenSettings?.();
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeCwd, onNewSession]);
+  }, [activeCwd, onNewSession, onOpenSettings, onToggleLeftSidebar, onToggleRightSidebar, platform]);
 }

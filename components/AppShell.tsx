@@ -74,6 +74,7 @@ import { formatActiveDuration, formatCompactCount, formatCostShort } from "@/lib
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
 import { getAgentsBadge, getSessionFamily } from "@/lib/session-family";
+import { settingsSectionOnOpen } from "@/lib/keyboard-shortcuts";
 import { getLastSettingsSection, settingsSectionRequiresProject, type SettingsSection } from "@/lib/settings-navigation";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
@@ -450,6 +451,12 @@ export function AppShell() {
     setSettingsSection(section);
   }, []);
 
+  const projectTrustCwdRef = useRef<string | null>(null);
+  // A second open leaves the mounted Settings page and its drafts alone.
+  const openSettings = useCallback(() => {
+    setSettingsSection((current) => settingsSectionOnOpen(current, getLastSettingsSection(projectTrustCwdRef.current)));
+  }, []);
+
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
       setActiveTopPanel(null);
@@ -637,6 +644,15 @@ export function AppShell() {
   const initialSessionId = initialNavigation.sessionId;
   const initialLinkedSessionId = linkedSessionId(initialNavigation);
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+
+  // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N, and the configurable shortcuts).
+  useGlobalKeyboardShortcuts({
+    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
+    activeCwd,
+    onToggleLeftSidebar: handleSidebarToggle,
+    onToggleRightSidebar: handleRightPanelToggle,
+    onOpenSettings: openSettings,
+  });
   const activeProjectKeyRef = useRef<string | null>(null);
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
@@ -959,12 +975,6 @@ export function AppShell() {
       });
     }
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, isMobile, newSessionCwd, router, selectedSession]);
-
-  // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
-  useGlobalKeyboardShortcuts({
-    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
-    activeCwd,
-  });
 
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectKey, which the same-project check in
@@ -1367,6 +1377,7 @@ export function AppShell() {
   ) : null;
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
+  projectTrustCwdRef.current = projectTrustCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
 
@@ -1509,7 +1520,7 @@ export function AppShell() {
         })}
         <button
           type="button"
-          onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
+          onClick={openSettings}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
