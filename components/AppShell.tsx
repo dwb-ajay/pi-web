@@ -30,8 +30,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName } from "@/lib/file-paths";
-import { activeTabAfterClose, EXPLORER_TAB_ID, shouldClosePanelAfterTabRemoval } from "@/lib/right-panel-tabs";
-import { registerRightPanelToggle } from "@/lib/shell-panel-toggles";
+import { activeTabAfterClose, EXPLORER_TAB_ID, filePanelAfterWorkspaceSwitch, parkedFilePanel, shouldClosePanelAfterTabRemoval } from "@/lib/right-panel-tabs";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -483,8 +482,6 @@ export function AppShell() {
     setRightPanelOpen((open) => !open);
   }, [isMobile]);
 
-  useEffect(() => registerRightPanelToggle(handleRightPanelToggle), [handleRightPanelToggle]);
-
   const handleRightPanelExpandToggle = useCallback(() => {
     setActiveTopPanel(null);
     setRightPanelExpanded((expanded) => !expanded);
@@ -613,23 +610,25 @@ export function AppShell() {
 
   const changeFileWorkspace = useCallback((currentKey: string | null, nextKey: string) => {
     if (currentKey === nextKey) return;
-    const activeFileId = activeFileTabId?.startsWith("file:") ? activeFileTabId : null;
+    const parked = parkedFilePanel(activeFileTabId, rightPanelOpen, explorerOnRight);
     const next = switchFileWorkspace(fileWorkspaceStatesRef.current, currentKey, nextKey, {
       tabs: fileTabs,
-      activeTabId: activeFileId,
-      open: rightPanelOpen && Boolean(activeFileId),
+      activeTabId: parked.activeTabId,
+      open: parked.open,
     }, fileWorkspaceGenerationRef.current);
     fileWorkspaceGenerationRef.current += 1;
     setFileWorkspaceGeneration(fileWorkspaceGenerationRef.current);
     setFileTabs(next.tabs);
     // Subagent tabs belong to the previous project's sessions: dropped, not parked.
     setAgentTabs([]);
-    // Terminal tabs span workspaces and keep control of the panel while active.
-    if (!activeFileTabId || activeFileId || activeFileTabId.startsWith("agent:")) {
-      setActiveFileTabId(next.activeTabId);
-      setRightPanelOpen(next.open);
+    // An open pinned explorer, and a terminal tab, keep the panel. A file or
+    // subagent tab yields to the workspace being restored.
+    const panel = filePanelAfterWorkspaceSwitch(activeFileTabId, rightPanelOpen, explorerOnRight, next);
+    if (panel) {
+      setActiveFileTabId(panel.activeTabId);
+      setRightPanelOpen(panel.panelOpen);
     }
-  }, [activeFileTabId, fileTabs, rightPanelOpen]);
+  }, [activeFileTabId, explorerOnRight, fileTabs, rightPanelOpen]);
 
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
