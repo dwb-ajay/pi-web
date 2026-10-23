@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type RefObject, type UIEvent as ReactUIEvent } from "react";
-import { createPortal } from "react-dom";
+import { ExplorerPlacement } from "./explorer-placement";
 import type { SessionInfo } from "@/lib/types";
 import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
@@ -3274,8 +3274,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         </div>
       </div>
       );
-      if (explorerOnRight) return fileExplorerHost ? createPortal(filesPanel, fileExplorerHost) : null;
-      return filesPanel;
+      return (
+        <ExplorerPlacement onRight={explorerOnRight} host={fileExplorerHost}>
+          {filesPanel}
+        </ExplorerPlacement>
+      );
       })()}
 
       <SidebarMenu
