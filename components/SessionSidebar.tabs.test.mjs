@@ -15,11 +15,15 @@ import { createJiti } from "jiti";
 const placementHook = fileURLToPath(new URL("../hooks/useFilesPlacement", import.meta.url))
   .replaceAll("\\", "/")
   .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+const explorerPlacementHook = fileURLToPath(new URL("../hooks/useFileExplorerPlacement", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
   alias: {
     [placementHook]: fileURLToPath(new URL("./__fixtures__/files-placement-tab.mjs", import.meta.url)),
+    [explorerPlacementHook]: fileURLToPath(new URL("./__fixtures__/file-explorer-placement-left.mjs", import.meta.url)),
   },
 });
 const React = await jiti.import("react");

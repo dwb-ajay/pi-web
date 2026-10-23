@@ -23,12 +23,15 @@ import { useTheme } from "@/hooks/useTheme";
 import { useFontPreferences } from "@/hooks/useFontPreferences";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
+import { useFileExplorerPlacement } from "@/hooks/useFileExplorerPlacement";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName } from "@/lib/file-paths";
+import { activeTabAfterClose, EXPLORER_TAB_ID, shouldClosePanelAfterTabRemoval } from "@/lib/right-panel-tabs";
+import { registerRightPanelToggle } from "@/lib/shell-panel-toggles";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -234,6 +237,8 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(() => !initialNavigation.sidebarCollapsed);
   const desktopSidebarOpenRef = useRef(!initialNavigation.sidebarCollapsed);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const explorerOnRight = useFileExplorerPlacement() === "right";
+  const [fileExplorerHost, setFileExplorerHost] = useState<HTMLElement | null>(null);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
   const rightPanelFullWidth = rightPanelOpen && rightPanelExpanded && !isMobile;
   useEffect(() => {
@@ -478,6 +483,8 @@ export function AppShell() {
     setRightPanelOpen((open) => !open);
   }, [isMobile]);
 
+  useEffect(() => registerRightPanelToggle(handleRightPanelToggle), [handleRightPanelToggle]);
+
   const handleRightPanelExpandToggle = useCallback(() => {
     setActiveTopPanel(null);
     setRightPanelExpanded((expanded) => !expanded);
@@ -545,6 +552,13 @@ export function AppShell() {
   // they are dropped when the project changes (they belong to its sessions).
   const [agentTabs, setAgentTabs] = useState<{ sessionId: string; label: string }[]>([]);
   const panelTabs: Tab[] = [
+    ...(explorerOnRight ? [{
+      id: EXPLORER_TAB_ID,
+      label: translate("filePlacement.tab"),
+      filePath: "",
+      kind: "explorer" as const,
+      pinned: true,
+    }] : []),
     ...fileTabs,
     ...terminalTabs.map((tab) => ({
       id: tab.id,
@@ -1255,8 +1269,13 @@ export function AppShell() {
     const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
     const remaining = terminalTabs.filter((item) => item.id !== tab.id);
     setTerminalTabs((tabs) => tabs.flatMap((item) => item.id !== tab.id ? [item] : replacement ? [replacement] : []));
-    setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? remaining.at(-1)?.id ?? fileTabs.at(-1)?.id ?? lastAgentTabId(agentTabs));
-    if (!replacement && !remaining.length && !fileTabs.length && !agentTabs.length) setRightPanelOpen(false);
+    setActiveFileTabId((current) => activeTabAfterClose(
+      current,
+      tab.id,
+      [replacement?.id, remaining.at(-1)?.id, fileTabs.at(-1)?.id, lastAgentTabId(agentTabs)],
+      explorerOnRight,
+    ));
+    if (shouldClosePanelAfterTabRemoval(remaining.length + fileTabs.length + agentTabs.length, explorerOnRight)) setRightPanelOpen(false);
   };
 
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -1267,24 +1286,26 @@ export function AppShell() {
     if (tabId.startsWith("agent:")) {
       const remainingAgents = agentTabs.filter((tab) => `agent:${tab.sessionId}` !== tabId);
       setAgentTabs(remainingAgents);
-      setActiveFileTabId((cur) => {
-        if (cur !== tabId) return cur;
-        return fileTabs.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? lastAgentTabId(remainingAgents);
-      });
-      if (fileTabs.length === 0 && terminalTabs.length === 0 && remainingAgents.length === 0) setRightPanelOpen(false);
+      setActiveFileTabId((cur) => activeTabAfterClose(
+        cur,
+        tabId,
+        [fileTabs.at(-1)?.id, terminalTabs.at(-1)?.id, lastAgentTabId(remainingAgents)],
+        explorerOnRight,
+      ));
+      if (shouldClosePanelAfterTabRemoval(fileTabs.length + terminalTabs.length + remainingAgents.length, explorerOnRight)) setRightPanelOpen(false);
       return;
     }
-    setFileTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0 && terminalTabs.length === 0 && agentTabs.length === 0) setRightPanelOpen(false);
-      return next;
-    });
-    setActiveFileTabId((cur) => {
-      if (cur !== tabId) return cur;
-      const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? lastAgentTabId(agentTabs);
-    });
-  }, [fileTabs, terminalTabs, agentTabs]);
+    if (tabId === EXPLORER_TAB_ID) return;
+    const remainingFiles = fileTabs.filter((t) => t.id !== tabId);
+    setFileTabs(remainingFiles);
+    setActiveFileTabId((cur) => activeTabAfterClose(
+      cur,
+      tabId,
+      [remainingFiles.at(-1)?.id, terminalTabs.at(-1)?.id, lastAgentTabId(agentTabs)],
+      explorerOnRight,
+    ));
+    if (shouldClosePanelAfterTabRemoval(remainingFiles.length + terminalTabs.length + agentTabs.length, explorerOnRight)) setRightPanelOpen(false);
+  }, [fileTabs, terminalTabs, agentTabs, explorerOnRight]);
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
@@ -1456,6 +1477,7 @@ export function AppShell() {
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
+        fileExplorerHost={explorerOnRight ? fileExplorerHost : null}
         onOpenTerminal={handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
@@ -2704,7 +2726,7 @@ export function AppShell() {
           <div style={{ flex: 1, overflow: "hidden" }}>
             <TabBar
               tabs={panelTabs}
-              activeTabId={activeFileTabId ?? ""}
+              activeTabId={explorerOnRight && !activeFileTabId ? EXPLORER_TAB_ID : (activeFileTabId ?? "")}
               onSelectTab={setActiveFileTabId}
               onCloseTab={handleCloseFileTab}
             />
@@ -2748,6 +2770,13 @@ export function AppShell() {
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {explorerOnRight && (
+            <div
+              ref={setFileExplorerHost}
+              className="right-panel-explorer-host"
+              hidden={activeFileTabId !== null && activeFileTabId !== EXPLORER_TAB_ID}
+            />
+          )}
           {activeFileTab?.filePath ? (
             <FileViewer
               key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
@@ -2773,11 +2802,11 @@ export function AppShell() {
                 { sourceSessionId: activeFileTab.sourceSessionId, page },
               )}
             />
-          ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) && !activeAgentTab ? (
+          ) : (explorerOnRight && (activeFileTabId === null || activeFileTabId === EXPLORER_TAB_ID)) || terminalTabs.some((tab) => tab.id === activeFileTabId) || activeAgentTab ? null : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
                {translate("files.noneOpen")}
             </div>
-          ) : null}
+          )}
           {terminalTabs.map((tab) => (
             <div key={tab.id} hidden={tab.id !== activeFileTabId} style={{ width: "100%", height: "100%" }}>
               <TerminalPanel
