@@ -1632,3 +1632,119 @@ a.session-tree-main {
     animation: none;
   }
 }
+
+.workspace-explorer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  min-height: 0;
+}
+
+.workspace-explorer-toolbar,
+.workspace-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workspace-explorer-add,
+.workspace-card-actions button,
+.workspace-card-remove,
+.workspace-session-remove {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.workspace-explorer-add:hover,
+.workspace-card-actions button:hover,
+.workspace-card-remove:hover,
+.workspace-session-remove:hover {
+  background: var(--bg-hover);
+}
+
+.workspace-explorer-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.workspace-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 8px;
+}
+
+.workspace-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-card-title {
+  min-width: 0;
+}
+
+.workspace-card-name,
+.workspace-session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.workspace-card-path,
+.workspace-session-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.workspace-session-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.workspace-session {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-session.is-selected {
+  background: var(--bg-selected);
+  border-radius: 6px;
+}
+
+.workspace-session.is-running .workspace-session-title {
+  color: var(--accent);
+}
+
+.workspace-session-open {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 4px 6px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.workspace-session-open:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
