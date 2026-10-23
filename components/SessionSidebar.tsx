@@ -230,6 +230,10 @@ interface Props {
   onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
   /** When the explorer is on the right, the files panel is portaled here. Null until that host mounts. */
   fileExplorerHost?: HTMLElement | null;
+  /** True once that portaled explorer is the open panel's visible tab. */
+  rightExplorerShown?: boolean;
+  /** Opens the file panel on the pinned explorer. AppShell owns that panel. */
+  onRevealRightExplorer?: () => void;
   onOpenTerminal?: (cwd: string) => void;
   explorerRefreshKey?: number;
   onExplorerRefresh?: () => void;
@@ -510,7 +514,7 @@ function buttonAnchor(element: HTMLElement, align: "start" | "end"): SidebarMenu
   return { kind: "rect", rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }, align };
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, onWorkspaceActions, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, fileExplorerHost = null, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, onWorkspaceActions, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, fileExplorerHost = null, rightExplorerShown = false, onRevealRightExplorer, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
@@ -2305,9 +2309,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const revealFiles = useCallback((focusTarget: "project-button" | "project-list" | "file-search") => {
     filesFocusRef.current = focusTarget;
     setFilesFocusRequest((count) => count + 1);
-    if (stacked) setFilesSectionCollapsed(false);
+    if (explorerOnRight) onRevealRightExplorer?.();
+    else if (stacked) setFilesSectionCollapsed(false);
     else switchTab("files");
-  }, [setFilesSectionCollapsed, stacked, switchTab]);
+  }, [explorerOnRight, onRevealRightExplorer, setFilesSectionCollapsed, stacked, switchTab]);
 
   // "Open in Files" of another project is a deliberate project switch, the
   // same as choosing it in the files' project list.
@@ -2331,7 +2336,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // the request counter runs it all the same. An unfolding section is not
   // shown yet: its button is still below the sidebar's edge, where the
   // project menu would be placed.
-  const filesShown = stacked ? filesFold.open : sidebarTab === "files";
+  const filesShown = explorerOnRight ? rightExplorerShown : stacked ? filesFold.open : sidebarTab === "files";
   useEffect(() => {
     const target = filesFocusRef.current;
     if (!target || !filesShown) return;
