@@ -41,7 +41,7 @@ export function ExplorerPlacement({
   }, [onRight, host, ready]);
 
   return (
-    <div ref={homeRef} hidden={onRight}>
+    <div ref={homeRef} className="sidebar-files-home" hidden={onRight ? true : undefined}>
       {ready && mountRef.current ? createPortal(children, mountRef.current) : children}
     </div>
   );
