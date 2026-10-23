@@ -23,7 +23,7 @@ test("Add existing search reaches a session past the first 200", () => {
   const items = workspacePickerMenuItems(sessions, "proj", ["s200"], (session) => `${session.messageCount} messages`, "Already added");
   assert.equal(items.length, 201);
   assert.equal(sidebarMenuHasFilter(items, 1), true);
-  const oldest = filterSidebarMenuItems(items, "s000");
+  const oldest = filterSidebarMenuItems(items, "opening-0");
   assert.deepEqual(oldest.map((item) => item.id), ["s000"]);
   assert.equal(oldest[0].label, "named-0");
   assert.match(oldest[0].note, /1 messages/);
@@ -32,7 +32,7 @@ test("Add existing search reaches a session past the first 200", () => {
     ariaLabel: "Add existing session",
     items,
     filter: { placeholder: "Search sessions", emptyLabel: "No match", minChoices: 1 },
-    filterQuery: "s000",
+    filterQuery: "opening-0",
     onActivate: () => {},
     onClose: () => {},
   }));
