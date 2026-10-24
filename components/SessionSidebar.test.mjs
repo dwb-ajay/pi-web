@@ -132,9 +132,8 @@ test("only Shift skips the session deletion confirmation", () => {
   );
 });
 
-test("on a desktop the files sit below the sessions by default, both in view", () => {
-  // The server renders the default placement on a desktop (useFilesPlacement
-  // and useIsMobile's server snapshots): the stacked layout.
+test("the desktop server render keeps the files section below the sessions", () => {
+  // The server snapshot renders the stable stacked layout before browser preferences load.
   const html = render({ selectedCwd: "/work/alpha", onOpenTerminal: noop });
   assert.match(html, /^<div class="session-sidebar is-files-below" style="--sidebar-files-height:320px">/);
   // Workspaces | Sessions stay available when files sit below. The brand stays. No Files tab.
