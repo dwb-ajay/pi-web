@@ -28,8 +28,6 @@ export const MAX_PROJECT_NAME_LENGTH = 80;
 export const MAX_PROJECT_NAMES = 1000;
 /** Most UTF-8 bytes `projectNames` takes as JSON: its keys are projectKeys, as long as the order's. */
 export const PROJECT_NAMES_MAX_BYTES = 256 * 1024;
-/** UTF-8 byte guard for curated workspaces. Not a count of workspaces or selected sessions. */
-export const WORKSPACES_MAX_BYTES = 256 * 1024;
 
 /** Epoch ms, keyed by the FAMILY ROOT session id. */
 export interface SessionUiFamilyState { pinnedAt?: number; archivedAt?: number }
@@ -206,19 +204,6 @@ function namesFit(count: number, bytes: number): boolean {
   return count <= MAX_PROJECT_NAMES && bytes <= PROJECT_NAMES_MAX_BYTES;
 }
 
-function workspaceEntryBytes(key: string, record: WorkspaceRecord): number {
-  return utf8.encode(JSON.stringify(key)).length + utf8.encode(JSON.stringify(record)).length + 2;
-}
-
-function workspacesBytes(workspaces: Record<string, WorkspaceRecord>, order: readonly string[]): number {
-  let bytes = 1;
-  for (const key of order) {
-    const record = workspaces[key];
-    if (record) bytes += workspaceEntryBytes(key, record);
-  }
-  return bytes + utf8.encode(JSON.stringify(order)).length;
-}
-
 function cloneWorkspaces(state: SessionUiState): { workspaces: Record<string, WorkspaceRecord>; order: string[] } {
   const workspaces: Record<string, WorkspaceRecord> = {};
   for (const [key, record] of Object.entries(state.workspaces ?? {})) {
@@ -232,9 +217,6 @@ function writeWorkspaces(
   workspaces: Record<string, WorkspaceRecord>,
   order: string[],
 ): boolean {
-  const nextBytes = workspacesBytes(workspaces, order);
-  const previousBytes = workspacesBytes(state.workspaces ?? {}, state.workspaceOrder ?? []);
-  if (nextBytes > WORKSPACES_MAX_BYTES && nextBytes >= previousBytes) return false;
   const previous = state.workspaceOrder ?? [];
   const same = sameOrder(previous, order) && JSON.stringify(state.workspaces ?? {}) === JSON.stringify(workspaces);
   if (same) return false;
