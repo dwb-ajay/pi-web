@@ -56,6 +56,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
+import { resolveWorkspaceRestore } from "@/lib/workspace-navigation";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -771,19 +772,13 @@ export function AppShell() {
     if (!lastOpenSessionId) return;
     const adopt = (d: { sessions: SessionInfo[] } | null) => {
       if (token !== workspaceRestoreTokenRef.current) return; // stale switch
-      const s = d?.sessions.find((x) => x.id === lastOpenSessionId);
-      if (!s) {
-        // The list loaded but the remembered session is gone — forget it.
-        // When the list itself failed (d === null) keep the memory so a
-        // later switch retries the restore.
-        if (d) clearLastOpen(projectKey);
-        return;
-      }
-      if (workspaceKeyOf(s) !== projectKey) {
-        // Defensive: the remembered session drifted out of this workspace.
+      const result = d && resolveWorkspaceRestore(d.sessions, lastOpenSessionId, projectKey, (session) => session.id, workspaceKeyOf);
+      if (!result) return;
+      if (result.kind !== "restore") {
         clearLastOpen(projectKey);
         return;
       }
+      const s = result.session;
       // Keep the temporary composer's draft in its cwd, even when the
       // remembered session belongs to another worktree of this project.
       const activeDraftKey = activeNewSessionDraftKeyRef.current;
