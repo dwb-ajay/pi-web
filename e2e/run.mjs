@@ -503,10 +503,10 @@ try {
         await page.waitForTimeout(200);
       }
       await hideSidebar.waitFor({ state: "visible" });
-      // The files sit below the sessions on a desktop; Settings › General ›
-      // File browser brings the tabs back, and goes back.
+      // Right is the default pinned explorer. Left is selected in Settings;
+      // File browser then switches Separate tab and Below sessions.
       await checkFilesPlacement(page);
-      console.log("PASS: files below the sessions by default, tabs from Settings and back");
+      console.log("PASS: explorer on the right by default; Left, then tabs from Settings and back");
       await checkModelDiscovery(page);
     }
     await checkModelContext(page);
