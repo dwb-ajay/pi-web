@@ -267,4 +267,3 @@ export function shortcutBindingsPayload(bindings: ShortcutBindings): {
     })) as Record<KeyboardShortcutAction, { enabled: boolean; chord: string[]; source: ShortcutBinding["source"] }>,
   };
 }
-
