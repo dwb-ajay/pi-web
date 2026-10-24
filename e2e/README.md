@@ -35,9 +35,10 @@ Coverage:
 - Interface/chat and monospace font lists and weights apply live, survive
   refresh, sync between tabs and reset independently without changing width or
   font size. Headings and Markdown emphasis retain their weights.
-- On a desktop the sidebar shows the files below the sessions; Settings ›
-  General › File browser brings back the Sessions | Files tabs and returns,
-  without remounting the file tree (its file search keeps its query).
+- File explorer placement defaults to Right: one pinned explorer tab in the
+  file panel. Settings › General › Left selects the sidebar explorer on purpose.
+  File browser then brings back the Sessions | Files tabs and returns to below
+  the sessions, without remounting the file tree (its file search keeps its query).
 - Unknown sessions and paths outside the fixture project are rejected.
 - Sidebar sessions open in browser tabs (`session-navigation.mjs`, desktop
   Chromium, one context so tabs share storage): a plain click and Enter

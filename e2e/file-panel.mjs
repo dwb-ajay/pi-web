@@ -10,7 +10,7 @@ export const filePanelFixture = `<!doctype html><html><body style="margin:20px;m
 export async function checkFilePanel(page, filePath) {
   const showSidebar = page.getByRole("button", { name: "Show sidebar", exact: true });
   if (await showSidebar.isVisible()) await showSidebar.click();
-  // The explorer lives in the sidebar's files: below the sessions, or its tab.
+  // The one explorer: the right pinned tab by default, or the left files section when Left is selected.
   await showSidebarFiles(page);
   // The DOM title normalizes Windows paths to forward slashes
   // (lib/file-paths.ts normalizeFilePathSlashes), so match in that form.

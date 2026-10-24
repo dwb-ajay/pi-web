@@ -1,22 +1,27 @@
 import assert from "node:assert/strict";
 
 /*
- * The sidebar's sessions and files in either layout: on a desktop the files
- * sit below the sessions by default (both in view; the files section may be
- * folded to its header row), phones and Settings › General › File browser
- * "Separate tab" show one tab at a time. Both panels keep their ids in both.
+ * The sidebar's sessions and files. File explorer placement defaults to Right:
+ * one pinned Files tab in the file panel. Left is an explicit Settings choice;
+ * below the sessions or a separate Files tab then follows the File browser choice.
+ * Both panels keep their ids.
  */
 
-/** Shows the explorer: the Files tab, or the files section opened. */
+/** Opens the one explorer: the right pinned tab, the left Files tab, or the files section. */
 export async function showSidebarFiles(page) {
   const files = page.locator("#session-sidebar-panel-files");
-  const tab = page.getByRole("tab", { name: "Files", exact: true });
-  const toggle = files.locator(".sidebar-files-section-toggle");
-  await tab.or(toggle).first().waitFor();
-  if (await tab.count()) {
-    if (await tab.getAttribute("aria-selected") !== "true") await tab.click();
-  } else if (await toggle.getAttribute("aria-expanded") !== "true") {
-    await toggle.click();
+  const leftTab = page.locator("#session-sidebar-tab-files");
+  const toggle = page.locator(".sidebar-files-section-toggle");
+  if (await leftTab.count()) {
+    if (await leftTab.getAttribute("aria-selected") !== "true") await leftTab.click();
+  } else if (await toggle.count()) {
+    if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  } else {
+    const opener = page.getByRole("button", { name: "Show file panel", exact: true });
+    if (await opener.count() && await opener.first().isVisible()) await opener.first().click();
+    const pinned = page.locator("#file-panel [role='tab'][data-pinned='true']");
+    await pinned.waitFor();
+    if (await pinned.getAttribute("aria-selected") !== "true") await pinned.click();
   }
   await files.locator(".sidebar-files-body").waitFor({ state: "visible" });
 }
@@ -30,11 +35,10 @@ export async function showSidebarSessions(page) {
 }
 
 /**
- * On a desktop both regions show by default; "Separate tab" brings the tabs
- * back and "Below sessions" returns, the file tree mounted throughout: its
- * own root stays on the page and its file search keeps its query, which a
- * remount would lose (open folders would come back from the per-folder
- * memory, so they prove nothing).
+ * Right is the default: one pinned explorer in the file panel, not a second
+ * copy in the sidebar. Left is selected on purpose; "Separate tab" and
+ * "Below sessions" then keep the same file tree mounted, and its file search
+ * keeps its query, which a remount would lose.
  */
 export async function checkFilesPlacement(page) {
   const showSidebar = page.getByRole("button", { name: "Show sidebar", exact: true });
@@ -42,11 +46,11 @@ export async function checkFilesPlacement(page) {
   const sessions = page.getByRole("region", { name: "Sessions", exact: true });
   const files = page.getByRole("region", { name: "Files", exact: true });
   const tablist = page.getByRole("tablist", { name: "Sidebar view", exact: true });
-  await sessions.waitFor();
-  await files.waitFor();
-  assert.equal(await tablist.count(), 0, "No tabs while the files sit below the sessions");
+  await page.locator("#session-sidebar-panel-sessions").waitFor();
+  assert.equal(await page.locator("#session-sidebar-panel-files").count(), 1, "one explorer");
+  assert.equal(await page.locator("#session-sidebar-tab-files").count(), 0, "Right does not duplicate the Files tab");
+  assert.equal(await page.locator("#file-panel [role='tab'][data-pinned='true']").count(), 1, "the explorer tab is pinned");
   await showSidebarFiles(page);
-  await page.getByRole("separator", { name: "Resize file browser", exact: true }).waitFor();
   const fileSearch = files.getByRole("button", { name: "Search files", exact: true });
   const fileQuery = page.locator("#file-search-input");
   if (await fileSearch.getAttribute("aria-expanded") !== "true") await fileSearch.click();
@@ -62,6 +66,13 @@ export async function checkFilesPlacement(page) {
     await page.keyboard.press("Escape");
     await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor({ state: "hidden" });
   };
+
+  await choose("Left");
+  await sessions.waitFor();
+  await files.waitFor();
+  assert.equal(await tablist.count(), 0, "Left uses the saved below-sessions layout");
+  await showSidebarFiles(page);
+  await page.getByRole("separator", { name: "Resize file browser", exact: true }).waitFor();
 
   await choose("Separate tab");
   await tablist.waitFor();
