@@ -56,7 +56,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
-import { resolveWorkspaceRestore } from "@/lib/workspace-navigation";
+import { hasCachedWorkspaceSession, resolveWorkspaceRestore } from "@/lib/workspace-navigation";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -798,7 +798,7 @@ export function AppShell() {
     };
     // Fast path: the sidebar already delivered the catalogue — restore
     // without waiting on a fresh /api/sessions round trip.
-    if (sessionCatalog.length > 0) {
+    if (hasCachedWorkspaceSession(sessionCatalog, lastOpenSessionId, (session) => session.id)) {
       adopt({ sessions: sessionCatalog });
       return;
     }

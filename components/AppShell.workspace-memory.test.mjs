@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveWorkspaceRestore } from "../lib/workspace-navigation.ts";
+import { hasCachedWorkspaceSession, resolveWorkspaceRestore } from "../lib/workspace-navigation.ts";
 
 const session = (id, projectKey, cwd = projectKey) => ({ id, projectKey, cwd });
 const idOf = (item) => item.id;
@@ -14,6 +14,12 @@ test("a missing remembered session does not fall back to another session", () =>
 test("a remembered session that moved projects is rejected", () => {
   const sessions = [session("remembered", "/project-2")];
   assert.deepEqual(resolveWorkspaceRestore(sessions, "remembered", "/project-1", idOf, projectOf), { kind: "drifted" });
+});
+
+test("a stale catalogue does not claim a remembered session is missing", () => {
+  const staleCatalogue = [session("other", "/project-1")];
+  assert.equal(hasCachedWorkspaceSession(staleCatalogue, "remembered", idOf), false);
+  assert.equal(hasCachedWorkspaceSession([session("remembered", "/project-1")], "remembered", idOf), true);
 });
 
 test("a valid remembered session restores across worktrees of the same project", () => {

@@ -1,3 +1,7 @@
+export function hasCachedWorkspaceSession<T>(sessions: readonly T[], rememberedId: string, idOf: (session: T) => string): boolean {
+  return sessions.some((session) => idOf(session) === rememberedId);
+}
+
 export type WorkspaceRestoreResult<T> =
   | { kind: "empty" }
   | { kind: "missing" }
