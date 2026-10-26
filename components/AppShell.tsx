@@ -871,10 +871,11 @@ export function AppShell() {
       // instead of discarding them so they return when the user switches back.
       changeFileWorkspace(currentProject, newProject);
     }
-    // Restore the project's remembered session when its working folder changes,
-    // including a switch between worktrees of the same project.
-    if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+    // Restore the project's remembered session when its working folder changes,
+    // including a switch between worktrees of the same project. Keep this after
+    // the composer URL update so a synchronous restore can set the session URL.
+    if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, options?: SelectSessionOptions) => {
