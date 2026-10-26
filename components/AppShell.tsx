@@ -56,7 +56,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
-import { hasCachedWorkspaceSession, resolveWorkspaceRestore } from "@/lib/workspace-navigation";
+import { resolveWorkspaceRestore } from "@/lib/workspace-navigation";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -796,12 +796,8 @@ export function AppShell() {
         router.replace(`?session=${encodeURIComponent(s.id)}`, { scroll: false });
       }
     };
-    // Fast path: the sidebar already delivered the catalogue — restore
-    // without waiting on a fresh /api/sessions round trip.
-    if (hasCachedWorkspaceSession(sessionCatalog, lastOpenSessionId, (session) => session.id)) {
-      adopt({ sessions: sessionCatalog });
-      return;
-    }
+    // The sidebar catalogue can be scoped to the previous workspace. Fetch the
+    // full catalogue after a workspace switch before deciding the memory is stale.
     void fetch("/api/sessions")
       .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
       .then(adopt)
