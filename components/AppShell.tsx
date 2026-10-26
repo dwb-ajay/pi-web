@@ -839,12 +839,7 @@ export function AppShell() {
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
-    if (
-      currentProject === newProject
-      && (selectedSession !== null || currentFreshCwd === cwd)
-    ) {
-      return;
-    }
+    if (currentProject === newProject && currentFreshCwd === cwd) return;
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
     const previousDraftKey = activeNewSessionDraftKeyRef.current;
@@ -875,10 +870,10 @@ export function AppShell() {
       // Keep #281's project isolation, but park each workspace's file tabs
       // instead of discarding them so they return when the user switches back.
       changeFileWorkspace(currentProject, newProject);
-      // Restore the workspace we switched to: its last open session, or keep
-      // the default welcome page when none is remembered.
-      if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
     }
+    // Restore the project's remembered session when its working folder changes,
+    // including a switch between worktrees of the same project.
+    if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
