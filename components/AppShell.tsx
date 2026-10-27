@@ -804,7 +804,7 @@ export function AppShell() {
       .catch(() => {
         // Network hiccup: keep the remembered session for a later retry.
       });
-  }, [router, sessionCatalog]);
+  }, [router]);
 
   const handleCwdChange = useCallback((
     cwd: string | null,
