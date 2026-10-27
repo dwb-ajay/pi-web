@@ -21,9 +21,8 @@ import {
 // other processes, replaced atomically, and a file that cannot be parsed is
 // set aside, never overwritten.
 
-const MAX_BYTES = 4 * 1024 * 1024;
 // `__proto__` is never copied: assigning it would set the object's prototype instead.
-const KNOWN_KEYS = new Set(["version", "revision", "sessions", "projects", "projectOrder", "projectNames", "__proto__"]);
+const KNOWN_KEYS = new Set(["version", "revision", "sessions", "projects", "projectOrder", "projectNames", "workspaces", "workspaceOrder", "__proto__"]);
 
 // Route handlers are bundled separately and hot reload re-evaluates modules; globalThis keeps one queue per process.
 const QUEUE_KEY: symbol = Symbol.for("pi-web:session-ui-state-write-queue");
@@ -127,7 +126,7 @@ function loadState(path: string): SessionUiState {
     return cached.state;
   }
   // Read after the stat: a write in between leaves a fingerprint older than the text, which only costs one more read.
-  const text = readRegularFileText(path, MAX_BYTES);
+  const text = readRegularFileText(path);
   if (text === undefined) {
     cache().reads.delete(path);
     return emptySessionUiState();
@@ -195,7 +194,7 @@ function editState(
     }
     try {
       const lastRevision = cache().revisions.get(path) ?? 0;
-      const text = readRegularFileText(path, MAX_BYTES);
+      const text = readRegularFileText(path);
       let state: SessionUiState;
       const extras: Record<string, unknown> = {};
       let reset = false;
@@ -226,6 +225,7 @@ function editState(
         projects: next.projects,
         ...(next.projectOrder?.length ? { projectOrder: next.projectOrder } : {}),
         ...(next.projectNames && Object.keys(next.projectNames).length > 0 ? { projectNames: next.projectNames } : {}),
+        ...(next.workspaces && next.workspaceOrder?.length ? { workspaces: next.workspaces, workspaceOrder: next.workspaceOrder } : {}),
         ...extras,
       };
       writePrivateFileAtomicSync(path, JSON.stringify(document, null, 2) + "\n");

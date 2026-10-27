@@ -52,6 +52,22 @@ export interface SessionUiState {
    * they are. Absent while empty.
    */
   projectNames?: Record<string, string>;
+  /**
+   * Curated workspaces by projectKey (`workspaceKeyOf`). A workspace is that
+   * project with only the selected sessions, in membership order (newest
+   * addition last). `cwd` is the folder Start new session uses; it is not the
+   * grouping key, so a worktree cwd stays distinct from the project.
+   * Absent while empty. A storage guard, not a 2–4 product cap, bounds the file.
+   */
+  workspaces?: Record<string, WorkspaceRecord>;
+  /** projectKeys of workspaces, top first. Absent while empty. */
+  workspaceOrder?: string[];
+}
+
+/** One curated workspace: a folder plus selected session ids, oldest membership first. */
+export interface WorkspaceRecord {
+  cwd: string;
+  sessionIds: string[];
 }
 /** Where a moved project goes, next to its anchor. */
 export type ProjectMovePosition = "before" | "after";
@@ -73,7 +89,18 @@ export type SessionUiStateRequest =
    */
   | { action: "move-project"; projectKey: string; anchorKey: string; position: ProjectMovePosition; add: string[] }
   /** A project's display name; null (or an empty name) removes it, and the folder name shows again. */
-  | { action: "rename-project"; projectKey: string; name: string | null };
+  | { action: "rename-project"; projectKey: string; name: string | null }
+  /** Idempotent: a missing workspace is appended; an existing one keeps its place and cwd. */
+  | { action: "ensure-workspace"; projectKey: string; cwd: string }
+  /** Membership only. Does not delete session files or stop a run. */
+  | { action: "remove-workspace"; projectKey: string }
+  /**
+   * Ensures the workspace, then appends ids that are not already members, in
+   * request order. Existing members stay where they are. A replay is a no-op.
+   */
+  | { action: "add-workspace-sessions"; projectKey: string; cwd: string; ids: string[] }
+  /** Drops membership only. The workspace folder stays, even with no sessions left. */
+  | { action: "remove-workspace-sessions"; projectKey: string; ids: string[] };
 
 export interface SessionUiStateResponse { state: SessionUiState }
 
@@ -177,6 +204,32 @@ function namesFit(count: number, bytes: number): boolean {
   return count <= MAX_PROJECT_NAMES && bytes <= PROJECT_NAMES_MAX_BYTES;
 }
 
+function cloneWorkspaces(state: SessionUiState): { workspaces: Record<string, WorkspaceRecord>; order: string[] } {
+  const workspaces: Record<string, WorkspaceRecord> = {};
+  for (const [key, record] of Object.entries(state.workspaces ?? {})) {
+    workspaces[key] = { cwd: record.cwd, sessionIds: [...record.sessionIds] };
+  }
+  return { workspaces, order: [...(state.workspaceOrder ?? Object.keys(workspaces))] };
+}
+
+function writeWorkspaces(
+  state: SessionUiState,
+  workspaces: Record<string, WorkspaceRecord>,
+  order: string[],
+): boolean {
+  const previous = state.workspaceOrder ?? [];
+  const same = sameOrder(previous, order) && JSON.stringify(state.workspaces ?? {}) === JSON.stringify(workspaces);
+  if (same) return false;
+  if (order.length === 0) {
+    delete state.workspaces;
+    delete state.workspaceOrder;
+  } else {
+    state.workspaces = workspaces;
+    state.workspaceOrder = order;
+  }
+  return true;
+}
+
 export function emptySessionUiState(): SessionUiState {
   return { version: SESSION_UI_STATE_VERSION, revision: 0, sessions: {}, projects: {} };
 }
@@ -243,7 +296,45 @@ export function normalizeSessionUiState(value: unknown): SessionUiState | null {
     }
     if (count > 0) state.projectNames = names;
   }
+  const workspaces = normalizeWorkspaces(value.workspaces, value.workspaceOrder);
+  if (workspaces) {
+    state.workspaces = workspaces.workspaces;
+    state.workspaceOrder = workspaces.order;
+  }
   return state;
+}
+
+function normalizeWorkspaces(
+  rawWorkspaces: unknown,
+  rawOrder: unknown,
+): { workspaces: Record<string, WorkspaceRecord>; order: string[] } | null {
+  if (!isPlainObject(rawWorkspaces)) return null;
+  const workspaces: Record<string, WorkspaceRecord> = {};
+  for (const [key, entry] of Object.entries(rawWorkspaces)) {
+    if (!isProjectString(key) || !isPlainObject(entry) || !isProjectString(entry.cwd)) continue;
+    if (!Array.isArray(entry.sessionIds)) continue;
+    const sessionIds: string[] = [];
+    const seen = new Set<string>();
+    for (const id of entry.sessionIds) {
+      if (!isSessionId(id) || seen.has(id)) continue;
+      seen.add(id);
+      sessionIds.push(id);
+    }
+    workspaces[key] = { cwd: entry.cwd, sessionIds };
+  }
+  const orderedKeys = Array.isArray(rawOrder)
+    ? rawOrder.filter((key): key is string => isProjectString(key) && hasOwn(workspaces, key))
+    : [];
+  const seenOrder = new Set<string>();
+  const order = orderedKeys.filter((key) => {
+    if (seenOrder.has(key)) return false;
+    seenOrder.add(key);
+    return true;
+  });
+  for (const key of Object.keys(workspaces)) {
+    if (!seenOrder.has(key)) order.push(key);
+  }
+  return order.length > 0 ? { workspaces, order } : null;
 }
 
 type ParseResult = { ok: true; request: SessionUiStateRequest } | { ok: false; error: string };
@@ -366,8 +457,36 @@ export function parseSessionUiStateRequest(body: unknown): ParseResult {
       }
       return { ok: true, request: { action: "rename-project", projectKey: body.projectKey, name } };
     }
+    case "ensure-workspace":
+    case "remove-workspace": {
+      if (!isProjectString(body.projectKey)) {
+        return { ok: false, error: `projectKey must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
+      }
+      if (body.action === "remove-workspace") {
+        return { ok: true, request: { action: "remove-workspace", projectKey: body.projectKey } };
+      }
+      if (!isProjectString(body.cwd)) {
+        return { ok: false, error: `cwd must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
+      }
+      return { ok: true, request: { action: "ensure-workspace", projectKey: body.projectKey, cwd: body.cwd } };
+    }
+    case "add-workspace-sessions":
+    case "remove-workspace-sessions": {
+      if (!isProjectString(body.projectKey)) {
+        return { ok: false, error: `projectKey must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
+      }
+      const ids = parseIds(body.ids);
+      if (!ids.ok) return ids;
+      if (body.action === "remove-workspace-sessions") {
+        return { ok: true, request: { action: "remove-workspace-sessions", projectKey: body.projectKey, ids: ids.ids } };
+      }
+      if (!isProjectString(body.cwd)) {
+        return { ok: false, error: `cwd must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
+      }
+      return { ok: true, request: { action: "add-workspace-sessions", projectKey: body.projectKey, cwd: body.cwd, ids: ids.ids } };
+    }
     default:
-      return { ok: false, error: "action must be \"set\", \"restore\", \"pin-project\", \"add-projects\", \"move-project\" or \"rename-project\"" };
+      return { ok: false, error: "action must be \"set\", \"restore\", \"pin-project\", \"add-projects\", \"move-project\", \"rename-project\", \"ensure-workspace\", \"remove-workspace\", \"add-workspace-sessions\" or \"remove-workspace-sessions\"" };
   }
 }
 
@@ -424,6 +543,13 @@ function copyState(state: SessionUiState): SessionUiState {
   // Only when present: an explicit undefined would not equal an absent field.
   if (state.projectOrder) copy.projectOrder = [...state.projectOrder];
   if (state.projectNames) copy.projectNames = { ...state.projectNames };
+  if (state.workspaces || state.workspaceOrder) {
+    const cloned = cloneWorkspaces(state);
+    if (cloned.order.length > 0) {
+      copy.workspaces = cloned.workspaces;
+      copy.workspaceOrder = cloned.order;
+    }
+  }
   return copy;
 }
 
@@ -614,8 +740,50 @@ export function applySessionUiStateRequest(
       if (name !== undefined && writeProjectName(next, request.projectKey, name)) changed = true;
       break;
     }
+    case "ensure-workspace":
+    case "add-workspace-sessions":
+    case "remove-workspace":
+    case "remove-workspace-sessions":
+      if (writeWorkspaces(next, ...workspaceEdit(next, request))) changed = true;
+      break;
   }
   return { state: next, changed };
+}
+
+function workspaceEdit(
+  state: SessionUiState,
+  request: Extract<SessionUiStateRequest, { action: "ensure-workspace" | "add-workspace-sessions" | "remove-workspace" | "remove-workspace-sessions" }>,
+): [Record<string, WorkspaceRecord>, string[]] {
+  const cloned = cloneWorkspaces(state);
+  const { workspaces } = cloned;
+  let { order } = cloned;
+  if (request.action === "remove-workspace") {
+    delete workspaces[request.projectKey];
+    order = order.filter((key) => key !== request.projectKey);
+    return [workspaces, order];
+  }
+  if (request.action === "remove-workspace-sessions") {
+    const current = workspaces[request.projectKey];
+    if (!current) return [workspaces, order];
+    const drop = new Set(request.ids);
+    current.sessionIds = current.sessionIds.filter((id) => !drop.has(id));
+    return [workspaces, order];
+  }
+  const existing = workspaces[request.projectKey];
+  if (!existing) {
+    workspaces[request.projectKey] = { cwd: request.cwd, sessionIds: [] };
+    order = [...order, request.projectKey];
+  }
+  if (request.action === "add-workspace-sessions") {
+    const record = workspaces[request.projectKey];
+    const seen = new Set(record.sessionIds);
+    for (const id of request.ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      record.sessionIds.push(id);
+    }
+  }
+  return [workspaces, order];
 }
 
 /**

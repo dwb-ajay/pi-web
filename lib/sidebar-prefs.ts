@@ -1,5 +1,5 @@
 /**
- * Per-browser sidebar preferences: the active tab (sessions or files), the
+ * Per-browser sidebar preferences: the active tab (workspaces, sessions or files), the
  * user's explicit project group expand/collapse choices, the archive view's
  * folded projects, whether the pinned section is collapsed, whether the files section below the sessions is
  * collapsed, whether the files tab or section lists ignored files, and the
@@ -34,7 +34,13 @@ const MAX_GROUP_EXPANSION_ENTRIES = 300;
 /** Oldest folders are dropped beyond this many. */
 const MAX_NON_GIT_CWDS = 50;
 
-export type SidebarTab = "sessions" | "files";
+export type SidebarTab = "workspaces" | "sessions" | "files";
+
+const SIDEBAR_TABS: readonly SidebarTab[] = ["workspaces", "sessions", "files"];
+
+export function isSidebarTab(value: unknown): value is SidebarTab {
+  return SIDEBAR_TABS.includes(value as SidebarTab);
+}
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -52,11 +58,12 @@ function getBrowserStorage(): StorageLike | null {
 }
 
 export function loadSidebarTab(storage: StorageLike | null = getBrowserStorage()): SidebarTab {
-  if (!storage) return "sessions";
+  if (!storage) return "workspaces";
   try {
-    return storage.getItem(SIDEBAR_TAB_STORAGE_KEY) === "files" ? "files" : "sessions";
+    const saved = storage.getItem(SIDEBAR_TAB_STORAGE_KEY);
+    return isSidebarTab(saved) ? saved : "workspaces";
   } catch {
-    return "sessions";
+    return "workspaces";
   }
 }
 

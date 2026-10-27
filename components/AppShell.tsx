@@ -23,12 +23,14 @@ import { useTheme } from "@/hooks/useTheme";
 import { useFontPreferences } from "@/hooks/useFontPreferences";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
+import { useFileExplorerPlacement } from "@/hooks/useFileExplorerPlacement";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName } from "@/lib/file-paths";
+import { activeTabAfterClose, EXPLORER_TAB_ID, filePanelAfterWorkspaceSwitch, parkedFilePanel, shouldClosePanelAfterTabRemoval } from "@/lib/right-panel-tabs";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -54,6 +56,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
+import { resolveWorkspaceRestore, shouldKeepSelectedSession } from "@/lib/workspace-navigation";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -74,6 +77,7 @@ import { formatActiveDuration, formatCompactCount, formatCostShort } from "@/lib
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
 import { getAgentsBadge, getSessionFamily } from "@/lib/session-family";
+import { settingsSectionOnOpen } from "@/lib/keyboard-shortcuts";
 import { getLastSettingsSection, settingsSectionRequiresProject, type SettingsSection } from "@/lib/settings-navigation";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
@@ -149,6 +153,12 @@ export function AppShell() {
   // stale (e.g. a delete that completes after the user navigated away).
   const selectedSessionRef = useRef(selectedSession);
   selectedSessionRef.current = selectedSession;
+  const workspaceActionsRef = useRef<{
+    addExplicitSession(session: { id: string; cwd: string; projectKey?: string | null; projectRoot?: string | null }): void;
+  } | null>(null);
+  const registerWorkspaceActions = useCallback((actions: typeof workspaceActionsRef.current) => {
+    workspaceActionsRef.current = actions;
+  }, []);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
@@ -233,6 +243,8 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(() => !initialNavigation.sidebarCollapsed);
   const desktopSidebarOpenRef = useRef(!initialNavigation.sidebarCollapsed);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const explorerOnRight = useFileExplorerPlacement() === "right";
+  const [fileExplorerHost, setFileExplorerHost] = useState<HTMLElement | null>(null);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
   const rightPanelFullWidth = rightPanelOpen && rightPanelExpanded && !isMobile;
   useEffect(() => {
@@ -444,6 +456,12 @@ export function AppShell() {
     setSettingsSection(section);
   }, []);
 
+  const projectTrustCwdRef = useRef<string | null>(null);
+  // A second open leaves the mounted Settings page and its drafts alone.
+  const openSettings = useCallback(() => {
+    setSettingsSection((current) => settingsSectionOnOpen(current, getLastSettingsSection(projectTrustCwdRef.current)));
+  }, []);
+
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
       setActiveTopPanel(null);
@@ -469,6 +487,16 @@ export function AppShell() {
       setMobileToolbarMoreOpen(false);
     }
     setRightPanelOpen((open) => !open);
+  }, [isMobile]);
+
+  const revealRightExplorer = useCallback(() => {
+    if (isMobile) {
+      setSidebarOpen(false);
+      setActiveTopPanel(null);
+      setMobileToolbarMoreOpen(false);
+    }
+    setActiveFileTabId(EXPLORER_TAB_ID);
+    setRightPanelOpen(true);
   }, [isMobile]);
 
   const handleRightPanelExpandToggle = useCallback(() => {
@@ -538,6 +566,13 @@ export function AppShell() {
   // they are dropped when the project changes (they belong to its sessions).
   const [agentTabs, setAgentTabs] = useState<{ sessionId: string; label: string }[]>([]);
   const panelTabs: Tab[] = [
+    ...(explorerOnRight ? [{
+      id: EXPLORER_TAB_ID,
+      label: translate("filePlacement.tab"),
+      filePath: "",
+      kind: "explorer" as const,
+      pinned: true,
+    }] : []),
     ...fileTabs,
     ...terminalTabs.map((tab) => ({
       id: tab.id,
@@ -592,23 +627,25 @@ export function AppShell() {
 
   const changeFileWorkspace = useCallback((currentKey: string | null, nextKey: string) => {
     if (currentKey === nextKey) return;
-    const activeFileId = activeFileTabId?.startsWith("file:") ? activeFileTabId : null;
+    const parked = parkedFilePanel(activeFileTabId, rightPanelOpen, explorerOnRight);
     const next = switchFileWorkspace(fileWorkspaceStatesRef.current, currentKey, nextKey, {
       tabs: fileTabs,
-      activeTabId: activeFileId,
-      open: rightPanelOpen && Boolean(activeFileId),
+      activeTabId: parked.activeTabId,
+      open: parked.open,
     }, fileWorkspaceGenerationRef.current);
     fileWorkspaceGenerationRef.current += 1;
     setFileWorkspaceGeneration(fileWorkspaceGenerationRef.current);
     setFileTabs(next.tabs);
     // Subagent tabs belong to the previous project's sessions: dropped, not parked.
     setAgentTabs([]);
-    // Terminal tabs span workspaces and keep control of the panel while active.
-    if (!activeFileTabId || activeFileId || activeFileTabId.startsWith("agent:")) {
-      setActiveFileTabId(next.activeTabId);
-      setRightPanelOpen(next.open);
+    // An open pinned explorer, and a terminal tab, keep the panel. A file or
+    // subagent tab yields to the workspace being restored.
+    const panel = filePanelAfterWorkspaceSwitch(activeFileTabId, rightPanelOpen, explorerOnRight, next);
+    if (panel) {
+      setActiveFileTabId(panel.activeTabId);
+      setRightPanelOpen(panel.panelOpen);
     }
-  }, [activeFileTabId, fileTabs, rightPanelOpen]);
+  }, [activeFileTabId, explorerOnRight, fileTabs, rightPanelOpen]);
 
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
@@ -631,6 +668,15 @@ export function AppShell() {
   const initialSessionId = initialNavigation.sessionId;
   const initialLinkedSessionId = linkedSessionId(initialNavigation);
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+
+  // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N, and the configurable shortcuts).
+  useGlobalKeyboardShortcuts({
+    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
+    activeCwd,
+    onToggleLeftSidebar: handleSidebarToggle,
+    onToggleRightSidebar: handleRightPanelToggle,
+    onOpenSettings: openSettings,
+  });
   const activeProjectKeyRef = useRef<string | null>(null);
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
@@ -726,19 +772,13 @@ export function AppShell() {
     if (!lastOpenSessionId) return;
     const adopt = (d: { sessions: SessionInfo[] } | null) => {
       if (token !== workspaceRestoreTokenRef.current) return; // stale switch
-      const s = d?.sessions.find((x) => x.id === lastOpenSessionId);
-      if (!s) {
-        // The list loaded but the remembered session is gone — forget it.
-        // When the list itself failed (d === null) keep the memory so a
-        // later switch retries the restore.
-        if (d) clearLastOpen(projectKey);
-        return;
-      }
-      if (workspaceKeyOf(s) !== projectKey) {
-        // Defensive: the remembered session drifted out of this workspace.
+      const result = d && resolveWorkspaceRestore(d.sessions, lastOpenSessionId, projectKey, (session) => session.id, workspaceKeyOf);
+      if (!result) return;
+      if (result.kind !== "restore") {
         clearLastOpen(projectKey);
         return;
       }
+      const s = result.session;
       // Keep the temporary composer's draft in its cwd, even when the
       // remembered session belongs to another worktree of this project.
       const activeDraftKey = activeNewSessionDraftKeyRef.current;
@@ -756,19 +796,15 @@ export function AppShell() {
         router.replace(`?session=${encodeURIComponent(s.id)}`, { scroll: false });
       }
     };
-    // Fast path: the sidebar already delivered the catalogue — restore
-    // without waiting on a fresh /api/sessions round trip.
-    if (sessionCatalog.length > 0) {
-      adopt({ sessions: sessionCatalog });
-      return;
-    }
+    // The sidebar catalogue can be scoped to the previous workspace. Fetch the
+    // full catalogue after a workspace switch before deciding the memory is stale.
     void fetch("/api/sessions")
       .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
       .then(adopt)
       .catch(() => {
         // Network hiccup: keep the remembered session for a later retry.
       });
-  }, [router, sessionCatalog]);
+  }, [router]);
 
   const handleCwdChange = useCallback((
     cwd: string | null,
@@ -799,12 +835,7 @@ export function AppShell() {
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
-    if (
-      currentProject === newProject
-      && (selectedSession !== null || currentFreshCwd === cwd)
-    ) {
-      return;
-    }
+    if (shouldKeepSelectedSession(selectedSession, currentProject, newProject) || (currentProject === newProject && currentFreshCwd === cwd)) return;
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
     const previousDraftKey = activeNewSessionDraftKeyRef.current;
@@ -835,14 +866,17 @@ export function AppShell() {
       // Keep #281's project isolation, but park each workspace's file tabs
       // instead of discarding them so they return when the user switches back.
       changeFileWorkspace(currentProject, newProject);
-      // Restore the workspace we switched to: its last open session, or keep
-      // the default welcome page when none is remembered.
-      if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
     }
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+    // Restore the project's remembered session when its working folder changes,
+    // including a switch between worktrees of the same project. Keep this after
+    // the composer URL update so a synchronous restore can set the session URL.
+    if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, options?: SelectSessionOptions) => {
+    // Explicit open only. A restore, a rerender, or the still-selected chat must not re-add membership.
+    if (!isRestore) workspaceActionsRef.current?.addExplicitSession(session);
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
     invalidateWorkspaceRestore();
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
@@ -952,12 +986,6 @@ export function AppShell() {
     }
   }, [activeCwd, changeFileWorkspace, invalidateWorkspaceRestore, isMobile, newSessionCwd, router, selectedSession]);
 
-  // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
-  useGlobalKeyboardShortcuts({
-    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
-    activeCwd,
-  });
-
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectKey, which the same-project check in
   // handleCwdChange relies on. Hydrate it from the session list so switching
@@ -986,8 +1014,13 @@ export function AppShell() {
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
+    workspaceActionsRef.current?.addExplicitSession({
+      ...session,
+      cwd: session.cwd || activeCwd || "",
+      projectKey: session.projectKey ?? activeProjectKeyRef.current,
+    });
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+  }, [activeCwd, invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
   const deliverSessionNotification = useCallback(({
     targetSession,
@@ -1121,11 +1154,21 @@ export function AppShell() {
     setRefreshKey((k) => k + 1);
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
-    setSelectedSession((prev) => ({
-      ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+    const previous = selectedSessionRef.current;
+    const forked = {
+      ...(previous ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
-    }));
+    };
+    if (forked.cwd) {
+      workspaceActionsRef.current?.addExplicitSession({
+        id: newSessionId,
+        cwd: forked.cwd,
+        projectKey: previous?.projectKey ?? activeProjectKeyRef.current,
+        projectRoot: previous?.projectRoot,
+      });
+    }
+    setSelectedSession(forked);
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
@@ -1245,8 +1288,13 @@ export function AppShell() {
     const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
     const remaining = terminalTabs.filter((item) => item.id !== tab.id);
     setTerminalTabs((tabs) => tabs.flatMap((item) => item.id !== tab.id ? [item] : replacement ? [replacement] : []));
-    setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? remaining.at(-1)?.id ?? fileTabs.at(-1)?.id ?? lastAgentTabId(agentTabs));
-    if (!replacement && !remaining.length && !fileTabs.length && !agentTabs.length) setRightPanelOpen(false);
+    setActiveFileTabId((current) => activeTabAfterClose(
+      current,
+      tab.id,
+      [replacement?.id, remaining.at(-1)?.id, fileTabs.at(-1)?.id, lastAgentTabId(agentTabs)],
+      explorerOnRight,
+    ));
+    if (shouldClosePanelAfterTabRemoval(remaining.length + fileTabs.length + agentTabs.length, explorerOnRight)) setRightPanelOpen(false);
   };
 
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -1257,24 +1305,26 @@ export function AppShell() {
     if (tabId.startsWith("agent:")) {
       const remainingAgents = agentTabs.filter((tab) => `agent:${tab.sessionId}` !== tabId);
       setAgentTabs(remainingAgents);
-      setActiveFileTabId((cur) => {
-        if (cur !== tabId) return cur;
-        return fileTabs.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? lastAgentTabId(remainingAgents);
-      });
-      if (fileTabs.length === 0 && terminalTabs.length === 0 && remainingAgents.length === 0) setRightPanelOpen(false);
+      setActiveFileTabId((cur) => activeTabAfterClose(
+        cur,
+        tabId,
+        [fileTabs.at(-1)?.id, terminalTabs.at(-1)?.id, lastAgentTabId(remainingAgents)],
+        explorerOnRight,
+      ));
+      if (shouldClosePanelAfterTabRemoval(fileTabs.length + terminalTabs.length + remainingAgents.length, explorerOnRight)) setRightPanelOpen(false);
       return;
     }
-    setFileTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0 && terminalTabs.length === 0 && agentTabs.length === 0) setRightPanelOpen(false);
-      return next;
-    });
-    setActiveFileTabId((cur) => {
-      if (cur !== tabId) return cur;
-      const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? lastAgentTabId(agentTabs);
-    });
-  }, [fileTabs, terminalTabs, agentTabs]);
+    if (tabId === EXPLORER_TAB_ID) return;
+    const remainingFiles = fileTabs.filter((t) => t.id !== tabId);
+    setFileTabs(remainingFiles);
+    setActiveFileTabId((cur) => activeTabAfterClose(
+      cur,
+      tabId,
+      [remainingFiles.at(-1)?.id, terminalTabs.at(-1)?.id, lastAgentTabId(agentTabs)],
+      explorerOnRight,
+    ));
+    if (shouldClosePanelAfterTabRemoval(remainingFiles.length + terminalTabs.length + agentTabs.length, explorerOnRight)) setRightPanelOpen(false);
+  }, [fileTabs, terminalTabs, agentTabs, explorerOnRight]);
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
@@ -1344,6 +1394,7 @@ export function AppShell() {
   ) : null;
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
+  projectTrustCwdRef.current = projectTrustCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
 
@@ -1434,6 +1485,7 @@ export function AppShell() {
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
+        onWorkspaceActions={registerWorkspaceActions}
         controlRef={sidebarControlRef}
         onNewSessionContextChange={handleSidebarNewSessionContext}
         initialSessionId={initialSessionId}
@@ -1445,6 +1497,9 @@ export function AppShell() {
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
+        fileExplorerHost={explorerOnRight ? fileExplorerHost : null}
+        rightExplorerShown={explorerOnRight && rightPanelOpen && (activeFileTabId == null || activeFileTabId === EXPLORER_TAB_ID)}
+        onRevealRightExplorer={explorerOnRight ? revealRightExplorer : undefined}
         onOpenTerminal={handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
@@ -1485,7 +1540,7 @@ export function AppShell() {
         })}
         <button
           type="button"
-          onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
+          onClick={openSettings}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
@@ -2671,6 +2726,7 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
+        inert={rightPanelOpen ? undefined : true}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelFullWidth ? " right-panel-full-width" : ""}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
@@ -2693,7 +2749,7 @@ export function AppShell() {
           <div style={{ flex: 1, overflow: "hidden" }}>
             <TabBar
               tabs={panelTabs}
-              activeTabId={activeFileTabId ?? ""}
+              activeTabId={explorerOnRight && !activeFileTabId ? EXPLORER_TAB_ID : (activeFileTabId ?? "")}
               onSelectTab={setActiveFileTabId}
               onCloseTab={handleCloseFileTab}
             />
@@ -2737,6 +2793,13 @@ export function AppShell() {
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {explorerOnRight && (
+            <div
+              ref={setFileExplorerHost}
+              className="right-panel-explorer-host"
+              hidden={activeFileTabId !== null && activeFileTabId !== EXPLORER_TAB_ID}
+            />
+          )}
           {activeFileTab?.filePath ? (
             <FileViewer
               key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
@@ -2762,11 +2825,11 @@ export function AppShell() {
                 { sourceSessionId: activeFileTab.sourceSessionId, page },
               )}
             />
-          ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) && !activeAgentTab ? (
+          ) : (explorerOnRight && (activeFileTabId === null || activeFileTabId === EXPLORER_TAB_ID)) || terminalTabs.some((tab) => tab.id === activeFileTabId) || activeAgentTab ? null : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
                {translate("files.noneOpen")}
             </div>
-          ) : null}
+          )}
           {terminalTabs.map((tab) => (
             <div key={tab.id} hidden={tab.id !== activeFileTabId} style={{ width: "100%", height: "100%" }}>
               <TerminalPanel

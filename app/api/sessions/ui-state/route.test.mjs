@@ -147,6 +147,24 @@ test("a name with no room left is refused, and nothing is written", async () => 
   assert.equal(renamed.revision, 6);
 });
 
+test("workspace membership can grow beyond the former workspace byte guard", async () => {
+  await reset();
+  const hugeId = `h${"b".repeat(800)}`;
+  const first = await okState(await post({
+    action: "add-workspace-sessions",
+    projectKey: "large",
+    cwd: "/large",
+    ids: Array.from({ length: 500 }, (_, index) => `${hugeId}${index}`),
+  }));
+  assert.equal(first.workspaces.large.sessionIds.length, 500);
+  assert.ok((await readFile(statePath, "utf8")).length > 256 * 1024);
+  const next = await okState(await post({ action: "add-workspace-sessions", projectKey: "large", cwd: "/large", ids: ["last"] }));
+  assert.equal(next.workspaces.large.sessionIds.length, 501);
+  assert.equal(next.workspaces.large.sessionIds.at(-1), "last");
+  const addedFolder = await okState(await post({ action: "ensure-workspace", projectKey: "empty", cwd: "/empty" }));
+  assert.deepEqual(addedFolder.workspaces.empty.sessionIds, []);
+});
+
 test("refuses untrusted, non-JSON and invalid requests without writing", async () => {
   await reset();
   const cases = [
