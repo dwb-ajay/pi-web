@@ -1,3 +1,7 @@
+export function shouldKeepSelectedSession<T>(selected: T | null, currentProject: string | null, nextProject: string): boolean {
+  return selected !== null && currentProject === nextProject;
+}
+
 export function hasCachedWorkspaceSession<T>(sessions: readonly T[], rememberedId: string, idOf: (session: T) => string): boolean {
   return sessions.some((session) => idOf(session) === rememberedId);
 }

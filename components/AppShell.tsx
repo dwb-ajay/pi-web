@@ -56,7 +56,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
-import { resolveWorkspaceRestore } from "@/lib/workspace-navigation";
+import { resolveWorkspaceRestore, shouldKeepSelectedSession } from "@/lib/workspace-navigation";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -835,7 +835,7 @@ export function AppShell() {
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
-    if (currentProject === newProject && currentFreshCwd === cwd) return;
+    if (shouldKeepSelectedSession(selectedSession, currentProject, newProject) || (currentProject === newProject && currentFreshCwd === cwd)) return;
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
     const previousDraftKey = activeNewSessionDraftKeyRef.current;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasCachedWorkspaceSession, resolveWorkspaceRestore } from "../lib/workspace-navigation.ts";
+import { hasCachedWorkspaceSession, resolveWorkspaceRestore, shouldKeepSelectedSession } from "../lib/workspace-navigation.ts";
 
 const session = (id, projectKey, cwd = projectKey) => ({ id, projectKey, cwd });
 const idOf = (item) => item.id;
@@ -22,8 +22,12 @@ test("a stale catalogue does not claim a remembered session is missing", () => {
   assert.equal(hasCachedWorkspaceSession([session("remembered", "/project-1")], "remembered", idOf), true);
 });
 
-test("a valid remembered session restores across worktrees of the same project", () => {
-  const remembered = session("remembered", "/project-1", "/project-1-worktree");
-  const result = resolveWorkspaceRestore([remembered], "remembered", "/project-1", idOf, projectOf);
-  assert.deepEqual(result, { kind: "restore", session: remembered });
+test("selecting another worktree keeps the currently open session", () => {
+  const selected = session("current", "/project-1", "/project-1-main");
+  assert.equal(shouldKeepSelectedSession(selected, projectOf(selected), "/project-1"), true);
+});
+
+test("switching projects does not keep a session from the previous project", () => {
+  const selected = session("current", "/project-1", "/project-1-main");
+  assert.equal(shouldKeepSelectedSession(selected, projectOf(selected), "/project-2"), false);
 });
