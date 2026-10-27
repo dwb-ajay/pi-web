@@ -34,7 +34,7 @@ export type ShortcutBindings = Record<KeyboardShortcutAction, ShortcutBinding>;
 
 export const DEFAULT_SHORTCUT_CHORDS: Record<KeyboardShortcutAction, ShortcutChord> = {
   toggleLeftSidebar: { modifiers: ["primary"], key: "b" },
-  toggleRightSidebar: { modifiers: ["primary", "shift"], key: "b" },
+  toggleRightSidebar: { modifiers: ["primary"], key: "j" },
   openSettings: { modifiers: ["primary"], key: "," },
 };
 

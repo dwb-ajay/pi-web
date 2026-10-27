@@ -67,7 +67,7 @@ test("the fixture stands in for the whole hook module", async () => {
 test("the tabs layout renders its tabs, no brand and no files section header", () => {
   const html = render({ selectedCwd: "/work/alpha", onOpenTerminal: noop });
   assert.match(html, /^<div class="session-sidebar" style="--sidebar-files-height:320px"><div class="sidebar-header"><div class="sidebar-tabs-list" role="tablist" aria-label="Sidebar view">/);
-  assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
   assert.doesNotMatch(html, /sidebar-brand|sidebar-files-section|sidebar-files-keys|sidebar-files-changes|is-files-below/);
   // Both panels are tab panels; the files' is hidden behind its tab.
   assert.match(html, /<div id="session-sidebar-panel-files" role="tabpanel" aria-labelledby="session-sidebar-tab-files" hidden="" class="sidebar-panel sidebar-files-panel">/);

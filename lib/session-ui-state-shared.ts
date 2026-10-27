@@ -52,6 +52,8 @@ export interface SessionUiState {
    * they are. Absent while empty.
    */
   projectNames?: Record<string, string>;
+  /** Explicit folder identities shown in Workspaces, in selection order. */
+  workspaceFolders?: Array<{ key: string; root: string }>;
 }
 /** Where a moved project goes, next to its anchor. */
 export type ProjectMovePosition = "before" | "after";
@@ -73,7 +75,8 @@ export type SessionUiStateRequest =
    */
   | { action: "move-project"; projectKey: string; anchorKey: string; position: ProjectMovePosition; add: string[] }
   /** A project's display name; null (or an empty name) removes it, and the folder name shows again. */
-  | { action: "rename-project"; projectKey: string; name: string | null };
+  | { action: "rename-project"; projectKey: string; name: string | null }
+  | { action: "workspace-folder"; projectKey: string; root: string; selected: boolean };
 
 export interface SessionUiStateResponse { state: SessionUiState }
 
@@ -216,6 +219,15 @@ export function normalizeSessionUiState(value: unknown): SessionUiState | null {
   }
   // Anything but an array reads as no order: it is cheap to rebuild, and no
   // reason to set pins and archive aside with a file taken for corrupt.
+  if (Array.isArray(value.workspaceFolders)) {
+    const seen = new Set<string>();
+    const folders = value.workspaceFolders.filter((entry): entry is { key: string; root: string } => {
+      if (!isPlainObject(entry) || !isProjectString(entry.key) || !isProjectString(entry.root) || seen.has(entry.key)) return false;
+      seen.add(entry.key);
+      return true;
+    });
+    if (folders.length > 0) state.workspaceFolders = folders;
+  }
   if (Array.isArray(value.projectOrder)) {
     const seen = new Set<string>();
     const keys = value.projectOrder.filter((key): key is string => {
@@ -356,6 +368,13 @@ export function parseSessionUiStateRequest(body: unknown): ParseResult {
       if (!add.ok) return add;
       return { ok: true, request: { action: "move-project", projectKey, anchorKey, position, add: add.keys } };
     }
+    case "workspace-folder": {
+      if (!isProjectString(body.projectKey) || !isProjectString(body.root)) {
+        return { ok: false, error: `projectKey and root must be non-empty strings of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
+      }
+      if (typeof body.selected !== "boolean") return { ok: false, error: "selected must be a boolean" };
+      return { ok: true, request: { action: "workspace-folder", projectKey: body.projectKey, root: body.root, selected: body.selected } };
+    }
     case "rename-project": {
       if (!isProjectString(body.projectKey)) {
         return { ok: false, error: `projectKey must be a non-empty string of at most ${MAX_PROJECT_STRING_LENGTH} characters` };
@@ -367,7 +386,7 @@ export function parseSessionUiStateRequest(body: unknown): ParseResult {
       return { ok: true, request: { action: "rename-project", projectKey: body.projectKey, name } };
     }
     default:
-      return { ok: false, error: "action must be \"set\", \"restore\", \"pin-project\", \"add-projects\", \"move-project\" or \"rename-project\"" };
+      return { ok: false, error: "action must be \"set\", \"restore\", \"pin-project\", \"add-projects\", \"move-project\", \"rename-project\" or \"workspace-folder\"" };
   }
 }
 
@@ -424,6 +443,7 @@ function copyState(state: SessionUiState): SessionUiState {
   // Only when present: an explicit undefined would not equal an absent field.
   if (state.projectOrder) copy.projectOrder = [...state.projectOrder];
   if (state.projectNames) copy.projectNames = { ...state.projectNames };
+  if (state.workspaceFolders) copy.workspaceFolders = state.workspaceFolders.map((folder) => ({ ...folder }));
   return copy;
 }
 
@@ -605,6 +625,23 @@ export function applySessionUiStateRequest(
       const moved = withProjectMoved([...missingProjectKeys(order, add), ...order], projectKey, anchorKey, position);
       const named = new Set([projectKey, anchorKey, ...add]);
       if (writeProjectOrder(next, capProjectOrder(moved, named))) changed = true;
+      break;
+    }
+    case "workspace-folder": {
+      const folders = next.workspaceFolders ?? [];
+      const index = folders.findIndex(({ key }) => key === request.projectKey);
+      if (request.selected && index < 0) {
+        next.workspaceFolders = [...folders, { key: request.projectKey, root: request.root }];
+        changed = true;
+      } else if (request.selected && index >= 0 && folders[index].root !== request.root) {
+        next.workspaceFolders = folders.map((folder, at) => at === index ? { ...folder, root: request.root } : folder);
+        changed = true;
+      } else if (!request.selected && index >= 0) {
+        const remaining = folders.filter(({ key }) => key !== request.projectKey);
+        if (remaining.length) next.workspaceFolders = remaining;
+        else delete next.workspaceFolders;
+        changed = true;
+      }
       break;
     }
     case "rename-project": {

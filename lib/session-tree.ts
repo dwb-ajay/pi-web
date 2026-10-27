@@ -76,6 +76,8 @@ export interface SessionTreeInput {
   selectedSessionId: string | null;
   /** projectFor(selectedCwd); shown as a group even without sessions. */
   currentProject: { key: string; root: string } | null;
+  /** Additional explicitly selected folders, including folders with no sessions. */
+  projectRoots?: readonly { key: string; root: string }[];
   /**
    * Explicit user choices (from prefs) over the groups kept open for the
    * page (effectiveGroupExpansion); see isGroupExpanded.
@@ -270,6 +272,9 @@ function createProjectResolver(
       const key = familyProjectKey(family);
       if (!roots.has(key)) roots.set(key, familyProjectRoot(family));
     },
+    noteProject(project: { key: string; root: string }) {
+      if (!roots.has(project.key)) roots.set(project.key, project.root);
+    },
     get(key: string): SidebarProject {
       const cached = projects.get(key);
       if (cached) return cached;
@@ -433,6 +438,8 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     else projectFamilies.set(key, [family]);
   }
 
+  for (const project of input.projectRoots ?? []) resolver.noteProject(project);
+
   const rows: SidebarRow[] = [];
 
   // Pinned section: newest pin first; ties keep family activity order.
@@ -469,6 +476,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     projectKeys.push(key);
   };
   if (currentProject) addKey(currentProject.key);
+  for (const project of input.projectRoots ?? []) addKey(project.key);
   for (const key of Object.keys(uiState.projects)) addKey(key);
 
   const projects = projectKeys.map((key) => resolver.get(key));

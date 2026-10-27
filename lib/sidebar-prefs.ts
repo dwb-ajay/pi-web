@@ -34,7 +34,7 @@ const MAX_GROUP_EXPANSION_ENTRIES = 300;
 /** Oldest folders are dropped beyond this many. */
 const MAX_NON_GIT_CWDS = 50;
 
-export type SidebarTab = "sessions" | "files";
+export type SidebarTab = "workspaces" | "sessions" | "files";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -54,7 +54,8 @@ function getBrowserStorage(): StorageLike | null {
 export function loadSidebarTab(storage: StorageLike | null = getBrowserStorage()): SidebarTab {
   if (!storage) return "sessions";
   try {
-    return storage.getItem(SIDEBAR_TAB_STORAGE_KEY) === "files" ? "files" : "sessions";
+    const value = storage.getItem(SIDEBAR_TAB_STORAGE_KEY);
+    return value === "files" || value === "workspaces" ? value : "sessions";
   } catch {
     return "sessions";
   }
