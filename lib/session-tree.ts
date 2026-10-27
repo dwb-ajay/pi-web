@@ -65,6 +65,13 @@ export type SidebarRow =
   | { kind: "footer-archived"; key: "footer-archived"; count: number }
   | { kind: "archive-group"; key: string; project: SidebarProject; count: number; expanded: boolean };
 
+export function workspaceSessionUiState(uiState: SessionUiState, workspaceKeys: ReadonlySet<string>): SessionUiState {
+  return {
+    ...uiState,
+    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key))),
+  };
+}
+
 export interface SessionTreeInput {
   /** The full catalog (allSessions), subagents included. */
   sessions: readonly SessionInfo[];

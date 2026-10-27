@@ -22,7 +22,7 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { SessionSidebar, nearestEnabledKey, handOffDisabledKeyFocus, sameIdsOr } = await jiti.import("./SessionSidebar.tsx");
-const { buildSessionTree, getRowOffsets, getVisibleRowIndices } = await jiti.import("@/lib/session-tree.ts");
+const { buildSessionTree, workspaceSessionUiState, getRowOffsets, getVisibleRowIndices } = await jiti.import("@/lib/session-tree.ts");
 const { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH } = await jiti.import("@/lib/panel-layout.ts");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
@@ -109,6 +109,25 @@ test("scrolling keeps the focused session and the viewport mounted without expan
     assert.equal(new Set(indices).size, indices.length);
     assert.deepEqual(indices, [...indices].sort((a, b) => a - b));
   }
+});
+
+test("the Workspaces tree includes only chosen project groups, including chosen empty folders", () => {
+  const chosen = { key: "/work/chosen", root: "/work/chosen" };
+  const empty = { key: "/work/empty", root: "/work/empty" };
+  const uiState = {
+    version: 1, revision: 0, sessions: {},
+    projects: { "/work/chosen": {}, "/work/unselected": {} },
+  };
+  const workspaceState = workspaceSessionUiState(uiState, new Set([chosen.key, empty.key]));
+  const model = buildSessionTree(treeInput({
+    uiState: workspaceState,
+    sessions: [session("chosen-chat", { project: chosen.root })],
+    projectRoots: [chosen, empty],
+  }));
+  assert.deepEqual(model.projects.map(({ key }) => key), [chosen.key, empty.key]);
+  assert.ok(model.rows.some((row) => row.kind === "group" && row.project.key === chosen.key));
+  assert.ok(model.rows.some((row) => row.kind === "group" && row.project.key === empty.key));
+  assert.ok(!model.rows.some((row) => row.kind === "group" && row.project.key === "/work/unselected"));
 });
 
 test("subagents fold into their main session row, which carries their running, unread and selected state", () => {

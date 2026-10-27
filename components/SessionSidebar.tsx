@@ -26,6 +26,7 @@ import {
   PINNED_MORE_KEY,
   showLessFamilies,
   showMoreFamilies,
+  workspaceSessionUiState,
   type SidebarProject,
   type SidebarRow,
 } from "@/lib/session-tree";
@@ -1444,9 +1445,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const workspaceSessions = useMemo(() => allSessions.filter((session) => workspaceKeys.has(workspaceKeyOf(session))), [allSessions, workspaceKeys]);
   const workspaceProjects = useMemo(() => workspaceFolders.map(({ key, root }) => ({ key, root })), [workspaceFolders]);
   const workspaceCurrentProject = currentProject && workspaceKeys.has(currentProject.key) ? currentProject : null;
+  const workspaceUiState = useMemo(() => workspaceSessionUiState(uiState, workspaceKeys), [uiState, workspaceKeys]);
   const workspaceModel = useMemo(() => buildSessionTree({
     sessions: workspaceSessions,
-    uiState,
+    uiState: workspaceUiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
     unreadIds: unreadSessionIds,
