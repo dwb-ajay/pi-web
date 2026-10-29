@@ -2410,13 +2410,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     // Three groups, by what they act on: the project itself, its place in the
     // list, its sessions (Delete all last, in red).
     return [
-      {
-        type: "item",
+      ...(sidebarTab === "workspaces" ? [{
+        type: "item" as const,
+        id: "remove-workspace-folder",
+        label: t("sidebar.removeWorkspaceFolder"),
+        icon: <FolderIcon />,
+        onSelect: () => { void applyUiState({ action: "workspace-folder", projectKey: project.key, root: project.root, selected: false }); },
+      }, { type: "separator" as const, id: "separator-workspace" }] : [{
+        type: "item" as const,
         id: "pin-project",
         label: t(project.pinned ? "sidebar.unpinProject" : "sidebar.pinProject"),
         icon: project.pinned ? <PinOffIcon /> : <PinIcon />,
         onSelect: () => { void applyUiState({ action: "pin-project", projectKey: project.key, root: project.root, pinned: !project.pinned }); },
-      },
+      }]),
       ...nameItems,
       {
         type: "item",
@@ -2973,15 +2979,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       >
         {sidebarTab === "workspaces" && (
           <div className="sidebar-workspaces-controls">
-            <button type="button" onClick={() => { setCustomPathError(null); setCustomPathOpen("workspace"); }}>
-              <PlusIcon size={13} /> {t("sidebar.addWorkspaceFolder")}
+            <button className="sidebar-add-workspace-folder" type="button" onClick={() => { setCustomPathError(null); setCustomPathOpen("workspace"); }}>
+              <PlusIcon size={13} /> <span>{t("sidebar.addWorkspaceFolder")}</span>
             </button>
-            {workspaceFolders.map(({ key, root }) => (
-              <div className="sidebar-workspace-folder" key={key} title={root}>
-                <span>{workspaceProjects.find((project) => project.key === key)?.root ?? root}</span>
-                <button type="button" aria-label={`${t("sidebar.removeWorkspaceFolder")}: ${root}`} title={t("sidebar.removeWorkspaceFolder")} onClick={() => void applyUiState({ action: "workspace-folder", projectKey: key, root, selected: false })}>×</button>
-              </div>
-            ))}
           </div>
         )}
         {sessionSearchOpen && (
@@ -3021,7 +3021,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <div className="sidebar-sessions-view" hidden={archiveMotion.mainHidden} inert={archiveMotion.mainInert}>
               <SessionTree
                 {...treeProps}
-                rows={sidebarTab === "workspaces" ? workspaceModel.rows : model.rows}
+                rows={sidebarTab === "workspaces" ? workspaceModel.rows.filter((row) => row.kind !== "footer-open") : model.rows}
                 emptyLabel={t("sidebar.noSessions")}
                 reveal={treeReveal}
                 onRevealHandled={handleRevealHandled}

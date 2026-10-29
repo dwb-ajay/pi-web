@@ -955,6 +955,20 @@ a.session-tree-main {
   text-align: left;
   cursor: pointer;
 }
+.sidebar-workspaces-controls > .sidebar-add-workspace-folder {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-workspaces-controls > .sidebar-add-workspace-folder:hover { background: var(--bg-hover); }
 
 .sidebar-workspace-folder { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; color: var(--text-muted); font-size: 11px; }
 .sidebar-workspace-folder > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1110,8 +1124,7 @@ a.session-tree-main {
 }
 
 .sidebar-header[data-fit="1"] .sidebar-new-label,
-.sidebar-header[data-fit="2"] .sidebar-new-label,
-.sidebar-header[data-fit="2"] .sidebar-tab-label {
+.sidebar-header[data-fit="2"] .sidebar-new-label {
   position: absolute;
   width: 1px;
   height: 1px;

@@ -68,7 +68,9 @@ export type SidebarRow =
 export function workspaceSessionUiState(uiState: SessionUiState, workspaceKeys: ReadonlySet<string>): SessionUiState {
   return {
     ...uiState,
-    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key))),
+    sessions: Object.fromEntries(Object.entries(uiState.sessions).map(([id, value]) => [id, { ...value, pinnedAt: undefined }])),
+    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key)).map(([key, value]) => [key, { ...value, pinnedAt: undefined }])),
+    projectOrder: [...workspaceKeys],
   };
 }
 
