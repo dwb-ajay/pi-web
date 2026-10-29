@@ -73,11 +73,7 @@ export function workspaceSessionUiState(uiState: SessionUiState, workspaceKeys: 
       delete copy.pinnedAt;
       return [id, copy];
     })),
-    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key)).map(([key, value]) => {
-      const copy = { ...value };
-      delete copy.pinnedAt;
-      return [key, copy];
-    })),
+    projects: {},
     projectOrder: [...workspaceKeys],
   };
 }
