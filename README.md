@@ -1,207 +1,52 @@
-# Pi Web
+# Pi Web — folder Workspaces fork
 
-[中文文档](./docs/README.zh-CN.md) | [日本語](./docs/README.ja.md) | [Русский](./docs/README.ru.md)
+This fork keeps Pi Web's stock session browser and adds a folder-filtered **Workspaces** view, configurable File explorer placement, and configurable keyboard shortcuts.
 
-Local browser UI for the [pi coding agent](https://github.com/earendil-works/pi). Pi Web uses the same local configuration and session files as pi, so you can browse and resume conversations, run agent turns, configure models and resources, and inspect project files from a browser.
+- Fork: [dwb-ajay/pi-web](https://github.com/dwb-ajay/pi-web), branch `fm/pi-web-p1-reconstructed`
+- Upstream: [agegr/pi-web](https://github.com/agegr/pi-web), branch `main`
+- Upstream documentation is preserved unchanged in [`README.upstream.md`](./README.upstream.md).
 
-**[Try the interactive demo →](https://agegr.github.io/pi-web/)** The real Pi Web UI runs entirely in your browser, with sample sessions, files and models. There is nothing to install; replies are pre-written and no model is called.
+## What this fork adds
 
-![Pi Web displaying a pi session with structured Markdown, tool calls, and project navigation](https://raw.githubusercontent.com/agegr/pi-web/main/docs/screenshot2.png)
+1. **Workspaces** filters the stock Sessions tree to folders you explicitly select. It reuses stock session rows and ordering; it does not create a separate chat collection.
+2. **File explorer placement** lets you place the explorer on the left or right.
+3. **Keyboard shortcuts** can be recorded, saved, disabled, and reset. The default right-sidebar shortcut is primary+J (Ctrl+J on Windows/Linux, Cmd+J on macOS). Browser or operating-system shortcuts can intercept key combinations.
 
-## Features
+## Install and run from this fork
 
-- **Session workspace**: browse, resume, rename, export, and delete conversations grouped by project, with running state, context usage, cost, and compaction details.
-- **Two ways to branch**: **New session** creates an independent session file from an earlier message; **Edit from here** creates a branch inside the current session.
-- **Project file tools**: browse and upload files, inspect Git diffs, and preview source, Markdown, images, audio, PDFs, and DOCX files with automatic refresh.
-- **Git worktrees**: switch checkouts from the sidebar while keeping sessions from the same repository grouped together.
-- **Web-based configuration**: manage provider login and API keys, models, model tests, plugin packages, and skills without leaving Pi Web.
-- **English, Simplified Chinese, and Traditional Chinese UI**: Pi Web follows the browser language initially and provides a language switcher in the top bar.
-
-## Quick Start
-
-Pi Web requires Node.js 22.19.0 or newer. Check your version with `node --version`, then run:
+Requirements: Node.js 22.19.0 or newer, Git, and an available port 8080.
 
 ```bash
-npx @agegr/pi-web@latest
+git clone --branch fm/pi-web-p1-reconstructed https://github.com/dwb-ajay/pi-web.git
+cd pi-web
+npm ci
+npm run build
+node bin/pi-web.js -p 8080 -H 0.0.0.0 --no-open
 ```
 
-The CLI opens a browser after the server is ready. If it does not, open [http://127.0.0.1:30141](http://127.0.0.1:30141). Pi Web listens only on `127.0.0.1` by default.
+Open `http://localhost:8080` from the same machine. The requested `-H 0.0.0.0` binds the service on all network interfaces. Pi Web can access sensitive agent data and run tools. Set `PI_WEB_PASSWORD` using a secure environment method, and use a trusted VPN or HTTPS reverse proxy for network access. Password authentication does not encrypt plain HTTP traffic. Port 8080 must be free; do not stop another service to make it available.
 
-If no model provider is configured yet, open the **Models** panel to sign in or add an API key.
+The upstream command `npx @agegr/pi-web@latest` installs and runs the upstream package, not this fork. A GitHub-source npx invocation is also not a supported run path for this fork: the npm package includes `.next` build output, but the repository does not commit `.next` and does not build it during install. Clone the source, install dependencies, and build it as shown above.
 
-To install the `pi-web` command globally:
+## Updating from upstream
+
+Keep working on `fm/pi-web-p1-reconstructed`. Fetch upstream and merge its `main` branch; resolve conflicts, run the relevant checks, then push only to the fork's `origin`:
 
 ```bash
-npm install -g @agegr/pi-web@latest
-pi-web
+git remote add upstream https://github.com/agegr/pi-web.git  # once
+git fetch upstream
+git switch fm/pi-web-p1-reconstructed
+git merge upstream/main
+# Resolve conflicts, then run the relevant tests, typecheck, lint, and build.
+git push origin fm/pi-web-p1-reconstructed
 ```
 
-Commands:
+Review the upstream changes and the resulting diff before pushing. Do not push this fork's branch to upstream.
 
-```bash
-pi-web version          # print the installed version
-pi-web status           # list running servers
-pi-web stop [--port N]  # stop a running server
-pi-web open [--port N]  # open a running server in the browser
-pi-web update [--check] # update a global npm install
-```
+## Current publication and validation
 
-To update, run `pi-web stop`, then `pi-web update` (or run the same install command again). To uninstall, run `npm uninstall -g @agegr/pi-web`.
+The current fork branch is published at [`7e034b5`](https://github.com/dwb-ajay/pi-web/commit/7e034b538f65efda7d20aedfe2358383163e7df4). [PR #5](https://github.com/dwb-ajay/pi-web/pull/5) is open and unmerged. A clean clone completed `npm ci` and `npm run build`; feature tests, lint, CI, and browser diagnostics for this revision were deferred. The build reported a dynamic-dependency warning in the session export route. The README preservation and command references describe the repository source and CLI.
 
-## Configuration
+## Publishing a separate npm package
 
-For port and hostname, command-line options override the corresponding environment variables. Either `--no-open` or `PI_WEB_NO_OPEN=1` disables automatic browser opening. Run `pi-web --help` (or `-h`) to print startup options and exit without starting the server. Unknown options exit with an error.
-
-| Option or environment variable | Purpose | Default |
-| --- | --- | --- |
-| `--help`, `-h` | Print startup options and exit | — |
-| `--port <port>`, `-p <port>`, or `PORT` | Server port | `30141` |
-| `--hostname <host>`, `-H <host>`, or `PI_WEB_HOSTNAME` | Bind hostname | `127.0.0.1` |
-| `--no-open` or `PI_WEB_NO_OPEN=1` | Do not open a browser automatically | Browser opens |
-| `PI_WEB_APP_NAME` | PWA manifest `name` and `short_name`; surrounding whitespace is trimmed, empty values use the default | `Pi Web` |
-| `PI_WEB_SKIP_VERSION_CHECK=1` | Disable Pi Web update checks | Unset |
-| `PI_WEB_ALLOWED_HOSTS` | Additional exact proxy or custom hostnames, comma-separated | Unset |
-| `PI_WEB_PASSWORD` | Enable browser password login; API clients may use Basic Auth with username `pi` | Authentication disabled |
-| `PI_WEB_IDLE_TIMEOUT_MS` | Session idle timeout in milliseconds, up to `2147483647`; `0` disables idle shutdown; invalid or out-of-range values use the default | `600000` (10 min) |
-| `PI_WEB_SHUTDOWN_DEADLINE_MS` | How long extensions get to handle `session_shutdown` before a closing session is disposed anyway, in milliseconds up to `2147483647`; `0`, invalid or out-of-range values use the default | `5000` (5 s) |
-
-Set `PI_WEB_APP_NAME` before starting the server (for example, `PI_WEB_APP_NAME='Work Pi' pi-web`). After changing it, restart the server to serve the new manifest; no rebuild is required. Updates to the name of an already installed PWA are managed by the browser and are not guaranteed to appear immediately. This does not change the page title or icons.
-
-For example:
-
-```bash
-pi-web --help
-pi-web -p 8080 -H 0.0.0.0 --no-open
-```
-
-### Remote Access
-
-Binding to a non-loopback address exposes an agent that can execute high-privilege actions. On a trusted LAN, require a long random password:
-
-```bash
-PI_WEB_PASSWORD='a-long-random-password' pi-web --hostname 0.0.0.0
-```
-
-Password authentication does not encrypt the connection. Do not expose Pi Web over plain HTTP to the internet; use HTTPS through a trusted reverse proxy or a trusted VPN. If a reverse proxy sends an external hostname, add that exact name to `PI_WEB_ALLOWED_HOSTS`. This allow-list does not change the address Pi Web binds to.
-
-### HTTP Proxy
-
-Server-side model and API requests honor the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
-
-On macOS or Linux:
-
-```bash
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-NO_PROXY=localhost,127.0.0.1 \
-npx @agegr/pi-web@latest
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:HTTP_PROXY = "http://127.0.0.1:7890"
-$env:HTTPS_PROXY = "http://127.0.0.1:7890"
-$env:NO_PROXY = "localhost,127.0.0.1"
-npx @agegr/pi-web@latest
-```
-
-## Notes
-
-- **Agent data**: Pi Web reads pi data from `~/.pi/agent` by default, including session files under `sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`. Set `PI_CODING_AGENT_DIR` to use another pi agent directory.
-- **Filesystem access**: Pi Web must be able to read the agent data directory and the working directories recorded by its sessions. Run Pi Web in the same filesystem environment as pi when sharing existing sessions.
-- **Shared configuration**: the Models panel uses pi's model, settings, and credential storage, so changes are visible to both interfaces. An open session applies a saved edit of its model when you select the model again.
-- **File access boundary**: the file browser is limited to working directories selected in Pi Web and project or session roots it already knows about; it is not a general filesystem browser.
-- **Git worktrees**: see [Worktrees in Pi Web](./docs/worktrees.md) for switcher visibility, worktree creation, and removal behavior.
-
-### Downstream Session Context Menu
-
-Electron wrappers and other downstream integrations can provide a session-row
-context menu without patching `SessionSidebar`. Listen for the cancelable
-`pi-web:session-row-contextmenu` browser event and call `preventDefault()`
-synchronously when the integration will handle it:
-
-```js
-window.addEventListener("pi-web:session-row-contextmenu", (event) => {
-  event.preventDefault();
-  const { id, path, cwd, name, clientX, clientY, refresh } = event.detail;
-
-  void openSessionMenu({ id, path, cwd, name, clientX, clientY }).then((changed) => {
-    if (changed) refresh();
-  });
-});
-```
-
-The detail object contains `id`, `path`, `cwd`, optional `name`, pointer
-coordinates, and a `refresh()` callback for actions that change the session
-list. If no listener cancels the extension event, Pi Web opens its built-in
-session menu (pin, rename, fork, mark read or unread, archive, open in new
-tab, delete) at the pointer instead of the browser's native context menu.
-The row's `⋯` button always opens the built-in menu and does not dispatch the
-event. Sessions not yet saved to disk get no built-in menu, so the native one
-still appears for them. This hook is browser-side and independent of Pi agent
-extensions.
-
-### Extension Session Liveness
-
-Server-side Pi extensions with detached work can prevent automatic idle
-session eviction through the versioned global registry:
-
-```js
-const liveness = globalThis[Symbol.for("@agegr/pi-web/session-liveness/v1")];
-const release = liveness?.version === 1
-  ? liveness.register({
-      name: "my-extension",
-      sessionId,
-      sessionFile: sessionFile || undefined,
-      isActive: () => detachedJobs.size > 0,
-    })
-  : () => {};
-```
-
-Register once per active extension session and call the returned idempotent
-`release` function on session shutdown, replacement, or reload. `isActive`
-must be synchronous, cheap, and scoped to the supplied exact session id or
-file. Provider errors fail safe by preserving that session. This lease only
-affects automatic idle eviction; explicit shutdown and Stop fallback cleanup
-still take precedence.
-
-## Development
-
-```bash
-npm install
-npm run dev
-```
-
-The development server runs at [http://127.0.0.1:30141](http://127.0.0.1:30141). Run the common checks with:
-
-```bash
-npm test
-node_modules/.bin/tsc --noEmit
-npm run lint
-```
-
-Do not run `next build` or `npm run build` during normal development. It writes to `.next/` and can interfere with the development server; leave builds for release work.
-
-Before starting on a feature, read [Contributing](./CONTRIBUTING.md) for what is in scope and the pull request checklist.
-
-Contributor guides: [Internationalization](./docs/i18n.md) and [Release process](./docs/release.md).
-
-## Repository Layout
-
-```text
-app/             Next.js UI and API routes
-components/      React UI components
-hooks/           Client state and interaction hooks
-lib/             Session, agent, model, file, Git, and security logic
-public/          Static assets and PWA files
-bin/             npm CLI entrypoint and launch option parsing
-docs/            Focused user and contributor guides
-demo/            Static browser demo published to GitHub Pages (see demo/README.md)
-```
-
-See [AGENTS.md](./AGENTS.md) for the architecture notes and detailed file map.
-
-## License
-
-[MIT](./LICENSE)
+Publication is technically feasible, but no fork package has been published. The current package identity is `@agegr/pi-web`; publishing would require a distinct package name under an npm scope controlled by the publisher, permission to publish that name, and npm authentication. The package's `files` list includes `.next`, so a release must build before packing and verify that the compiled server assets and `bin/pi-web.js` are present. Update package metadata (name, repository, homepage, bugs, and version) only as a separately authorized release task. This fork's README does not authorize a package change or publication.
