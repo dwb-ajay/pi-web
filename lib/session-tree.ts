@@ -68,8 +68,16 @@ export type SidebarRow =
 export function workspaceSessionUiState(uiState: SessionUiState, workspaceKeys: ReadonlySet<string>): SessionUiState {
   return {
     ...uiState,
-    sessions: Object.fromEntries(Object.entries(uiState.sessions).map(([id, value]) => [id, { ...value, pinnedAt: undefined }])),
-    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key)).map(([key, value]) => [key, { ...value, pinnedAt: undefined }])),
+    sessions: Object.fromEntries(Object.entries(uiState.sessions).map(([id, value]) => {
+      const copy = { ...value };
+      delete copy.pinnedAt;
+      return [id, copy];
+    })),
+    projects: Object.fromEntries(Object.entries(uiState.projects).filter(([key]) => workspaceKeys.has(key)).map(([key, value]) => {
+      const copy = { ...value };
+      delete copy.pinnedAt;
+      return [key, copy];
+    })),
     projectOrder: [...workspaceKeys],
   };
 }
