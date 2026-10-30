@@ -1,16 +1,28 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import ts from "typescript";
 import vm from "node:vm";
 
-const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
+// This file covers the left-sidebar explorer. The product default is right;
+// alias the placement hook so these renders stay on the left layout.
+const explorerPlacementHook = fileURLToPath(new URL("../hooks/useFileExplorerPlacement", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+const jiti = createJiti(import.meta.url, {
+  jsx: { runtime: "automatic" },
+  tsconfigPaths: true,
+  alias: {
+    [explorerPlacementHook]: fileURLToPath(new URL("./__fixtures__/file-explorer-placement-left.mjs", import.meta.url)),
+  },
+});
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { SessionSidebar, nearestEnabledKey, handOffDisabledKeyFocus, sameIdsOr } = await jiti.import("./SessionSidebar.tsx");
-const { buildSessionTree, getRowOffsets, getVisibleRowIndices } = await jiti.import("@/lib/session-tree.ts");
+const { buildSessionTree, workspaceSessionUiState, getRowOffsets, getVisibleRowIndices } = await jiti.import("@/lib/session-tree.ts");
 const { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH } = await jiti.import("@/lib/panel-layout.ts");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
@@ -99,6 +111,25 @@ test("scrolling keeps the focused session and the viewport mounted without expan
   }
 });
 
+test("the Workspaces tree includes only chosen project groups, including chosen empty folders", () => {
+  const chosen = { key: "/work/chosen", root: "/work/chosen" };
+  const empty = { key: "/work/empty", root: "/work/empty" };
+  const uiState = {
+    version: 1, revision: 0, sessions: {},
+    projects: { "/work/chosen": {}, "/work/unselected": {} },
+  };
+  const workspaceState = workspaceSessionUiState(uiState, new Set([chosen.key, empty.key]));
+  const model = buildSessionTree(treeInput({
+    uiState: workspaceState,
+    sessions: [session("chosen-chat", { project: chosen.root })],
+    projectRoots: [chosen, empty],
+  }));
+  assert.deepEqual(model.projects.map(({ key }) => key), [chosen.key, empty.key]);
+  assert.ok(model.rows.some((row) => row.kind === "group" && row.project.key === chosen.key));
+  assert.ok(model.rows.some((row) => row.kind === "group" && row.project.key === empty.key));
+  assert.ok(!model.rows.some((row) => row.kind === "group" && row.project.key === "/work/unselected"));
+});
+
 test("subagents fold into their main session row, which carries their running, unread and selected state", () => {
   const child = session("child", { relation: { kind: "subagent", parentSessionId: "main", profile: "explore", description: "", status: "running" } });
   const { rows } = buildSessionTree(treeInput({
@@ -125,10 +156,9 @@ test("on a desktop the files sit below the sessions by default, both in view", (
   // and useIsMobile's server snapshots): the stacked layout.
   const html = render({ selectedCwd: "/work/alpha", onOpenTerminal: noop });
   assert.match(html, /^<div class="session-sidebar is-files-below" style="--sidebar-files-height:320px">/);
-  // No tabs: the brand (its name says the versions a click shows), then New
-  // and the sessions' search. No view options.
-  assert.match(html, /<div class="sidebar-header"><button type="button" class="sidebar-brand" aria-label="Pi Web, versions: web [^",]+, pi [^",]+">Pi Web<\/button><span class="sidebar-header-spacer"><\/span><button type="button" class="sidebar-new-button"/);
-  assert.doesNotMatch(html, /role="tablist"|role="tab"|role="tabpanel"|View options|sidebar-title/);
+  // The brand and the compact Workspaces/Sessions tabs remain available above the list.
+  assert.match(html, /sidebar-brand[\s\S]*?session-sidebar-tab-workspaces[\s\S]*?session-sidebar-tab-sessions[\s\S]*?sidebar-new-button/);
+  assert.match(html, /role="tablist"[\s\S]*?role="tabpanel"|role="tablist"[\s\S]*?role="region"/);
   assert.match(html, /<span class="sidebar-new-label">New<\/span><\/button><button type="button" title="Search conversations" aria-label="Search conversations" aria-expanded="false" aria-controls="session-search-input" class="sidebar-search-toggle">/);
   // Two regions, both shown: the sessions, the separator, the files.
   const sessions = openingTag(html, "session-sidebar-panel-sessions");
@@ -137,7 +167,7 @@ test("on a desktop the files sit below the sessions by default, both in view", (
   assert.equal(files, '<div id="session-sidebar-panel-files" role="region" aria-label="Files" class="sidebar-panel sidebar-files-panel">');
   const separator = html.slice(html.indexOf('role="separator"') - 200, html.indexOf(files));
   assert.ok(html.indexOf(sessions) < html.indexOf('role="separator"') && html.indexOf('role="separator"') < html.indexOf(files), "sessions, separator, files");
-  assert.match(separator, /<div aria-label="Resize file browser" aria-orientation="horizontal" aria-valuemax="2000" aria-valuemin="220" aria-valuenow="320" aria-valuetext="320 px" role="separator" tabindex="0" aria-controls="session-sidebar-panel-files" class="panel-resize-handle sidebar-files-resize-handle" data-resize-handle="sidebar-files" title="Resize file browser: Drag to resize\. Double-click or press Enter to reset\."><\/div>$/);
+  assert.match(separator, /<div aria-label="Resize file browser" aria-orientation="horizontal" aria-valuemax="2000" aria-valuemin="220" aria-valuenow="320" aria-valuetext="320 px" role="separator" tabindex="0" aria-controls="session-sidebar-panel-files" class="panel-resize-handle sidebar-files-resize-handle" data-resize-handle="sidebar-files" title="Resize file browser: Drag to resize\. Double-click or press Enter to reset\."><\/div>/);
   // The files section: one header row (folds it; the files' keys at its
   // end in the files tab's order, the file search last), then its body: the
   // picker's one row and the tree. No row of keys under the picker; nothing
@@ -413,7 +443,8 @@ test("the layout, the tab and the fold chosen last never change the first render
   assert.match(clientHtml, /^<div class="session-sidebar is-files-below" style="--sidebar-files-height:320px">/);
   assert.doesNotMatch(openingTag(clientHtml, "session-sidebar-panel-files"), /hidden/);
   assert.equal(openingTag(clientHtml, "session-sidebar-files-body"), '<div id="session-sidebar-files-body" class="sidebar-files-body">');
-  assert.doesNotMatch(clientHtml, /role="tablist"/);
+  assert.match(clientHtml, /session-sidebar-tab-workspaces/);
+  assert.match(clientHtml, /session-sidebar-tab-sessions/);
 });
 
 test("the files show the composer bar's picker in one row below the sessions, asking for a project until it has one", () => {

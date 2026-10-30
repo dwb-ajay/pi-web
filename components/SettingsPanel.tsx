@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useChatAppearance";
 import { useEnterSendMode, setEnterSendMode } from "@/hooks/useEnterSendMode";
 import { useFilesPlacement, setFilesPlacement } from "@/hooks/useFilesPlacement";
+import { useFileExplorerPlacement, setFileExplorerPlacement } from "@/hooks/useFileExplorerPlacement";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
 import {
@@ -23,6 +24,7 @@ import {
   type SettingsSection,
 } from "@/lib/settings-navigation";
 import { focusModalPanel, listenForPanelEscape } from "@/lib/stacked-dialog";
+import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
@@ -71,6 +73,7 @@ export function SettingsSectionIcon({ section, size = 16, strokeWidth = 1.8 }: {
   if (section === "skills") return <svg {...common}><path d="m12 2-10 5 10 5 10-5-10-5Z" /><path d="m2 12 10 5 10-5M2 17l10 5 10-5" /></svg>;
   if (section === "agents") return <svg {...common} className="settings-section-icon is-agent"><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" /></svg>;
   if (section === "mcp") return <svg {...common}><rect x="3" y="3" width="18" height="7" rx="2" /><rect x="3" y="14" width="18" height="7" rx="2" /><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" /></svg>;
+  if (section === "keyboard") return <svg {...common}><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" /></svg>;
   return <svg {...common}><path d="M9 7V2M15 7V2M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0ZM12 19v3" /></svg>;
 }
 
@@ -80,6 +83,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
   const enterSendMode = useEnterSendMode();
   const filesPlacement = useFilesPlacement();
+  const fileExplorerPlacement = useFileExplorerPlacement();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -387,6 +391,41 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           <div
             className="settings-chat-option settings-chat-switch-option"
             role="radiogroup"
+            aria-label={t("filePlacement.label")}
+            aria-describedby="file-placement-description"
+          >
+            <span>{t("filePlacement.label")}</span>
+            <div className="settings-send-mode-options">
+              <label className="settings-send-mode-option">
+                <input
+                  type="radio"
+                  name="file-explorer-placement"
+                  value="left"
+                  checked={fileExplorerPlacement === "left"}
+                  onChange={() => setFileExplorerPlacement("left")}
+                  className="sr-only"
+                />
+                <span className="settings-send-mode-label">{t("filePlacement.left")}</span>
+              </label>
+              <label className="settings-send-mode-option">
+                <input
+                  type="radio"
+                  name="file-explorer-placement"
+                  value="right"
+                  checked={fileExplorerPlacement === "right"}
+                  onChange={() => setFileExplorerPlacement("right")}
+                  className="sr-only"
+                />
+                <span className="settings-send-mode-label">{t("filePlacement.right")}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <p id="file-placement-description" className="settings-general-description">{t("filePlacement.description")}</p>
+        <div className="settings-chat-options">
+          <div
+            className="settings-chat-option settings-chat-switch-option"
+            role="radiogroup"
             aria-label={t("settings.filesPlacement")}
             aria-describedby="settings-files-placement-description"
           >
@@ -527,6 +566,7 @@ export function SettingsPanel({
     { id: "agents", label: t("common.agents") },
     { id: "plugins", label: t("common.plugins") },
     { id: "mcp", label: t("settings.mcp") },
+    { id: "keyboard", label: t("keyboardShortcuts.title") },
   ] as const).map((item) => ({ ...item, requiresProject: settingsSectionRequiresProject(item.id) }));
   const sectionRequiresProject = settingsSectionRequiresProject(section);
 
@@ -627,6 +667,7 @@ export function SettingsPanel({
           {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} trust={projectTrust} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {/* No project needed: the global mcp.json is listed alone, and a project adds its group. */}
           {sectionHost("mcp", <McpConfig embedded key={cwd ?? ""} cwd={cwd} trust={projectTrust} onTrustProject={onOpenTrustDialog} onProjectTrustChanged={onProjectTrustChanged} onClose={onClose} />)}
+          {sectionHost("keyboard", <KeyboardShortcutsSettings />)}
         </main>
       </div>
     </div>

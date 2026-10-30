@@ -15,11 +15,15 @@ import { createJiti } from "jiti";
 const placementHook = fileURLToPath(new URL("../hooks/useFilesPlacement", import.meta.url))
   .replaceAll("\\", "/")
   .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+const explorerPlacementHook = fileURLToPath(new URL("../hooks/useFileExplorerPlacement", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/^[a-z]:/, (drive) => drive.toUpperCase());
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
   alias: {
     [placementHook]: fileURLToPath(new URL("./__fixtures__/files-placement-tab.mjs", import.meta.url)),
+    [explorerPlacementHook]: fileURLToPath(new URL("./__fixtures__/file-explorer-placement-left.mjs", import.meta.url)),
   },
 });
 const React = await jiti.import("react");
@@ -63,7 +67,7 @@ test("the fixture stands in for the whole hook module", async () => {
 test("the tabs layout renders its tabs, no brand and no files section header", () => {
   const html = render({ selectedCwd: "/work/alpha", onOpenTerminal: noop });
   assert.match(html, /^<div class="session-sidebar" style="--sidebar-files-height:320px"><div class="sidebar-header"><div class="sidebar-tabs-list" role="tablist" aria-label="Sidebar view">/);
-  assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
   assert.doesNotMatch(html, /sidebar-brand|sidebar-files-section|sidebar-files-keys|sidebar-files-changes|is-files-below/);
   // Both panels are tab panels; the files' is hidden behind its tab.
   assert.match(html, /<div id="session-sidebar-panel-files" role="tabpanel" aria-labelledby="session-sidebar-tab-files" hidden="" class="sidebar-panel sidebar-files-panel">/);
